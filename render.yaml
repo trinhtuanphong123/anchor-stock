@@ -123,8 +123,9 @@ services:
       # Fallback only (P15/D2) — the browser's normal path to the API is the static site's
       # same-origin rewrite below, which needs no CORS admission at all. This exists for the case
       # that rewrite does not do (Validation #11 is where that gets proved or disproved): the
-      # site's own origin, e.g. https://anchor-model-web.onrender.com, comma-separated if more
-      # than one. The API will not boot while BOTH this and ALLOWED_ORIGIN_REGEX are empty.
+      # site's own origin — actual assigned host is https://anchor-model-web-lrgg.onrender.com
+      # (Render appended -lrgg since the bare name was taken), comma-separated if more than one.
+      # The API will not boot while BOTH this and ALLOWED_ORIGIN_REGEX are empty.
       - key: ALLOWED_ORIGINS
         sync: false
 
@@ -155,7 +156,7 @@ services:
       # that gets checked, with ALLOWED_ORIGINS above as the fallback if it does not hold.
       - type: rewrite
         source: /api/*
-        destination: https://anchor-model-api.onrender.com/api/*
+        destination: https://anchor-model-api-lrgg.onrender.com/api/*
 
     envVars:
       # Matches apps/web/.node-version and the CI job, so all three agree on one runtime.
