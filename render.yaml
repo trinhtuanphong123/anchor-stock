@@ -1,0 +1,147 @@
+# Render Blueprint — the half of the deployment Render owns.
+#
+# Declared here rather than clicked together in Render's dashboard because configuration
+# assembled by hand is configuration nothing can reproduce. A thesis defence should be able to
+# rebuild the deployment from the repository, and a reviewer should be able to read what the
+# deployment is without being given an account.
+#
+# THIS FILE CONTAINS NO SECRET, and must not. `DATABASE_URL` holds the Supabase `postgres`
+# password and is marked `sync: false`, which tells Render to prompt for it once and keep it in
+# the dashboard instead of reading it from here.
+#
+# ONE SERVICE, NOT TWO — the change from the public repository, and why
+# --------------------------------------------------------------------
+# The predecessor blueprint also declared the dashboard as a Render Static Site. The dashboard
+# is served from Netlify now, so that block would describe something nobody runs, and this file
+# states its own purpose as being rebuildable from the repository. A blueprint that rebuilds a
+# topology nobody runs fails at exactly the thing it exists for.
+#
+# The reasoning that put the dashboard on a static host is UNCHANGED and is not being reversed:
+# a Web Service serving static files can spin down, so a visitor arriving cold would wait for
+# the HTML itself before any request to the API was even issued, whereas a static host is always
+# instant and only the data behind it can be slow. Netlify satisfies that as well as Render's
+# Static Site does. What changed is the provider, not the argument — see
+# docs/decisions/D-30-hosting-split-across-two-providers.md.
+#
+# `netlify.toml`, at the repository root, is the other half. Each host declares only what it
+# owns, so neither file overstates its reach.
+#
+# The cross-reference that no file can close
+# ------------------------------------------
+# The two halves reference each other: the site must be BUILT with the API's URL (Next inlines
+# NEXT_PUBLIC_* at build time), and the API must be CONFIGURED with the site's origin before CORS
+# will admit it. Render's `fromService` could not close that loop even when both services lived
+# here — its supported properties are host, port, hostport, connectionString,
+# connectionPoolString, user, password and database, none of which yields an `https://…` origin
+# for a web or static service. Across two providers it is not even a candidate.
+#
+# So the first deploy is two passes, in this order:
+#
+#   1. Apply this blueprint. Supply DATABASE_URL when prompted. The API will FAIL TO START —
+#      that is correct and expected: `runtime_guards.resolve_runtime` refuses to boot in
+#      production with neither ALLOWED_ORIGINS nor ALLOWED_ORIGIN_REGEX, and the site's origin
+#      is not known yet.
+#   2. Note the Netlify site's origin, set it as ALLOWED_ORIGINS here, and redeploy the API.
+#   3. Note the API's URL, set it as NEXT_PUBLIC_API_BASE_URL on Netlify, and redeploy the SITE.
+#      A rebuild is mandatory — setting the variable without one changes nothing, because the
+#      value is baked into the JavaScript bundle at build time.
+
+services:
+  # ---------------------------------------------------------------------------
+  # FastAPI read layer. Reads Supabase as `postgres` — after D-20 that is the
+  # only path to the data; anon/authenticated hold no grants at all.
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: anchor-model-api
+    runtime: python
+    plan: free
+    # Closest region to the Supabase project (aws-0-ap-southeast-2). Render offers no Sydney;
+    # Singapore is the nearest available and is also nearest to the intended readers.
+    # Valid values: oregon (default), ohio, virginia, frankfurt, singapore.
+    region: singapore
+
+    # LOAD-BEARING. app/main.py imports `from app.health import …`, not
+    # `from services.api.app…`, so the process must run with services/api as its working
+    # directory. Changing this breaks the import with no other symptom. CI mirrors it with
+    # PYTHONPATH=services/api for the same reason.
+    rootDir: services/api
+
+    # services/api/requirements.txt delegates to ../../requirements-api.lock — 21 pinned
+    # packages, a strict subset of requirements.lock, without vnstock's closure (D-22). The
+    # relative path resolves because Render clones the whole repository and rootDir only sets
+    # the working directory.
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+
+    # Liveness only, deliberately. /health returns HTTP 200 whenever the process is alive and
+    # reports database trouble in the BODY as "database": "error". A health check that failed on
+    # a transient Supabase blip would restart-loop the service, turning a read outage into a
+    # total one.
+    healthCheckPath: /health
+
+    envVars:
+      # Arms every guard in app/runtime_guards.py: a structurally invalid DATABASE_URL, a truthy
+      # API_DEV_FIXTURES, an over-broad origin pattern, or no origin configuration at all each
+      # become a refusal to start.
+      - key: ENV
+        value: production
+
+      # SECRET — set in the Render dashboard, never here.
+      # Use the Supabase SESSION POOLER host on port 5432. Two constraints, both easy to get
+      # wrong and both silent when wrong:
+      #   * the direct db.<ref>.supabase.co endpoint is IPv6-only and Render's egress cannot be
+      #     assumed to be, so the pooler is required;
+      #   * the TRANSACTION pooler (6543) puts the API's only connection-layer write barrier —
+      #     `conn.set_session(readonly=True)` in app/db/connection.py, which issues SET SESSION
+      #     CHARACTERISTICS AS TRANSACTION READ ONLY — outside this process's control.
+      #
+      #     An earlier revision claimed 6543 makes that statement error or leak into another
+      #     client's session. MEASURED against this project on 2026-08-29, it does neither:
+      #     `set_session` succeeded, and over 20 transactions on ONE client connection served by
+      #     8 DISTINCT backends, `transaction_read_only` read `on` every time — Supavisor replays
+      #     the session parameter onto whichever backend it assigns. The claim is corrected
+      #     rather than deleted, because it was the stated reason for this setting and a reason
+      #     that does not reproduce must not go on being cited.
+      #
+      #     5432 is still required, on the reason that survives measurement. Under session
+      #     pooling the read-only characteristic is a property of a session THIS process owns
+      #     for the connection's whole life; under transaction pooling it is a property of a
+      #     proxy's parameter-replay behaviour, which Supabase does not document as a guarantee
+      #     and which no test here can pin. Since D-20 the API connects as `postgres`, so that
+      #     characteristic is the only thing standing between a read path and a read-write
+      #     superuser session — not a place to depend on undocumented proxy behaviour.
+      #
+      #     It fails LOUDLY either way: since the read-only pass became fatal in production, a
+      #     URL that genuinely could not establish the barrier answers 503 rather than serving
+      #     writably. `/health` would still report "database": "ok", because db/ping.py opens its
+      #     own connection and never issues the statement.
+      - key: DATABASE_URL
+        sync: false
+
+      # The Netlify site's production origin, e.g. https://anchor-model-web.netlify.app —
+      # comma-separated if more than one. Filled in at step 2 above.
+      #
+      # The API will not boot while BOTH this and ALLOWED_ORIGIN_REGEX are empty; either one
+      # alone satisfies the production guard, because a deployment that serves only preview
+      # builds has no fixed origin to list.
+      - key: ALLOWED_ORIGINS
+        sync: false
+
+      # Optional. A regular expression admitting origins that cannot be enumerated because the
+      # host mints a new one per deploy — Netlify's deploy previews are
+      # `https://<hash>--<site>.netlify.app`, a different origin every build, which an
+      # exact-match list can never contain. Without this, every preview renders
+      # "api_not_configured" on every panel and reads as a broken deployment.
+      #
+      # Scope it to your own site. Starlette applies it with `fullmatch`, so it is anchored at
+      # both ends, and `runtime_guards.is_overbroad_origin_regex` refuses a pattern that admits
+      # arbitrary origins. What that guard CANNOT catch is a pattern broad within a shared
+      # domain: `https://.*\.netlify\.app` admits every site on netlify.app, including other
+      # people's. Name your site in the pattern:
+      #
+      #   https://[0-9a-z]+--anchor-model-web\.netlify\.app
+      #
+      # `sync: false` for the same reason as the two above: it references the other host, which
+      # this file cannot resolve.
+      - key: ALLOWED_ORIGIN_REGEX
+        sync: false

@@ -1,0 +1,42 @@
+# anchor-model — canonical direct production dependencies.
+#
+# The single source manifest of DIRECT production runtime dependencies for both the FastAPI read
+# layer and the offline pipeline track. It is compiled into the fully pinned transitive lock
+# `requirements.lock`, which is what a local all-purpose virtual environment installs.
+#
+# Every entry traces to a real production import. Do NOT add a package that no production path
+# imports, and do NOT add evaluation-only, notebook, test, lint, or lock-tooling packages here —
+# those belong in requirements-dev.in. After any change, regenerate requirements.lock in a fresh
+# disposable Linux environment with the exact interpreter and the exact ephemeral pip-tools
+# compiler; the full command is in the header of requirements.lock.
+#
+# TWO CORRECTIONS CARRIED OVER FROM THE PUBLIC REPOSITORY, recorded rather than silently dropped:
+#
+#   * This file used to call itself "ClusterWeb — canonical direct production dependencies
+#     (P14-S02)" and justified its entries against `pipelines/scheduler.py` and
+#     `pipelines/jobs/bootstrap.py`. Neither module exists, in that repository or this one; they
+#     are Leiden-era paths that outlived the architecture they belonged to. The justification
+#     now names only what is on disk.
+#   * Earlier revisions cited `docs/deployment/PYTHON_RUNTIME.md` three times for the
+#     regeneration procedure. That file has never existed — one of the phantom paths catalogued
+#     in docs/00-project-status.md §5. The procedure lives in the lock headers.
+
+# --- API (services/api/app) ---
+# Included by reference, not restated. The previous arrangement copied these four packages out
+# of requirements-api.in and carried a comment admitting "nothing checks the agreement — there
+# is no CI", so the two manifests could drift apart silently and only a deployment would find
+# out. There is now one source, and scripts/check_locks.py — which CI runs — verifies each .in
+# against its own lock.
+-r requirements-api.in
+
+# --- Offline pipeline track (pipelines/) ---
+python-dotenv>=1,<2
+numpy>=1.26,<3
+pandas>=2,<3
+# Exact pin, not a range: pipelines/ingestion/provider.py's module docstring documents three
+# behaviors (row-overshoot count on history(), SystemExit-not-Exception on rate limit, the
+# 3.x->4.x default-source change) verified by direct probing against 4.0.4 specifically. vnstock
+# carries no semver contract for any of that, so floating the version risks a silent behavior
+# change the ingestion code was never checked against. Re-pin deliberately, after re-probing,
+# if a newer patch is ever adopted.
+vnstock==4.0.4

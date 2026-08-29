@@ -1,0 +1,19 @@
+# Development-only dependencies. NOT installed by the API or worker deployment — that installs
+# from requirements.lock, which is compiled from requirements.in alone.
+#
+# Keeping these separate is deliberate: pyarrow is imported only by
+# pipelines/storage/localfs.py, which serves the OFFLINE training track. The Supabase and
+# Airflow runtime uses pipelines/storage/pg.py and never touches parquet, so shipping pyarrow
+# into that image would be paying for a capability that path cannot use.
+
+# Local train track — parquet shards under data/processed/.
+# Imported lazily inside localfs.py so a pg-only environment never needs it.
+pyarrow>=15,<25
+
+# Lint. The repo has a ruff.toml; without ruff installed it was decoration.
+ruff>=0.16,<1
+
+# Test runner. Nothing depends on it yet: verification today is the `main()`/`--selftest`
+# idiom on each module, which needs no runner. The self-checks are written so that converting
+# them into test_*.py is mechanical when that becomes worthwhile.
+pytest>=8,<9

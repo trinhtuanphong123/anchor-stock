@@ -1,0 +1,194 @@
+# CI — the check this repository did not have (P14 G5).
+#
+# `CLAUDE.md` names the gap plainly: "This repository has no test runner, no CI, and no verified
+# runbook for any component." Two thirds of that was already false — `services/api` has 196
+# stdlib-unittest assertions and `apps/web` has 57 vitest ones — but nothing ran them except a
+# person remembering to. This file is what makes "the check is X" answerable with "and X ran".
+#
+# Counts at the time of writing: 196 tests in services/api, 57 in apps/web, 18 pipeline
+# self-checks. Every one of the 18 was executed locally, with DATABASE_URL unset, before it
+# was written into the matrix below.
+#
+# The four jobs are independent on purpose: a failing web build should not hide a passing API
+# suite, and the pipeline self-checks are slow enough that folding them into another job would
+# make every failure wait on them.
+#
+# WHAT IS NOT HERE, and why
+# -------------------------
+# * No deploy step. Render and Netlify each build from their own push trigger; adding a third
+#   deployer here would give the repository two truths about how it ships.
+# * No database. Every check below runs offline — each command was run with DATABASE_URL unset
+#   before it was written down. A CI job that needs Supabase credentials is a CI job that stops
+#   working the first time a key rotates.
+# * No `pipelines/research/`. It is not in this repository at all (D-29) — not ignored, simply
+#   absent — so the matrix below lists only modules a fresh checkout actually contains.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A second push to the same branch makes the first run's answer irrelevant.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: ruff and lock agreement
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          # Reads .python-version (3.13.13) rather than repeating it — a second copy of a
+          # version number is a second thing to forget.
+          python-version-file: .python-version
+          cache: pip
+      - name: Install ruff
+        run: pip install -r requirements-dev.in
+      - name: ruff check
+        # Configured in pyproject.toml [tool.ruff] — line-length 100, target py313, excluding
+        # apps/web, migrations and data. It already passes; this keeps it that way.
+        run: ruff check .
+
+      - name: Lock agreement
+        # The check requirements.in used to say did not exist: it restated the API's four
+        # packages from requirements-api.in under a comment admitting "nothing checks the
+        # agreement — there is no CI". The restatement is gone (requirements.in now includes
+        # the other file by reference) and this asserts what remains — every direct requirement
+        # is present in its lock at a version satisfying the specifier, and the two locks agree
+        # version for version, which is what D-22's `--constraint` flag exists to produce.
+        #
+        # Needs no third-party import, so it runs before anything but ruff is installed. Both
+        # of its failure modes were provoked deliberately and each exited 1.
+        run: python scripts/check_locks.py
+
+  api:
+    name: services/api
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - name: Install the API's own lock
+        # requirements-api.lock, not requirements.lock — D-22 split them so the API never
+        # installs vnstock's closure. Installing the wrong one here would hide a missing
+        # dependency until deploy.
+        run: pip install -r requirements-api.lock
+      - name: unittest
+        # Stdlib `unittest`, not pytest, and the choice is load-bearing rather than stylistic.
+        # All three test modules open by stating they use "standard-library ``unittest`` only
+        # (no pytest, no new dependency)", and they lean on `subTest` — which pytest reports
+        # reliably only from 9.x, while requirements-dev.in pins `pytest>=8,<9`. Under that
+        # pin a failing subtest can pass unnoticed, and a runner that can miss a failure is
+        # worse than no runner. `unittest` handles subtests natively: verified by making one
+        # fail on purpose, which exited 1.
+        #
+        # PYTHONPATH mirrors render.yaml's `rootDir: services/api`: app/main.py imports
+        # `from app.health import ...`, not `from services.api.app...`. test_narrative.py does
+        # NOT insert that path itself (the other two modules do), so without this the run dies
+        # with ModuleNotFoundError before a single assertion. That is not hypothetical — it is
+        # what happened when this job was first drafted.
+        #
+        # `-t` points at the tests directory rather than services/api because tests/ has no
+        # __init__.py, and discovery refuses a start directory it cannot import.
+        env:
+          PYTHONPATH: services/api
+        run: python -m unittest discover -s services/api/tests -t services/api/tests
+
+  web:
+    name: apps/web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: apps/web/.node-version
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install
+        run: npm --prefix apps/web ci
+      - name: Lint
+        # `next lint` warns that it is deprecated and removed in Next 16. Left as-is rather
+        # than migrated inside a CI commit; the migration is its own change.
+        run: npm --prefix apps/web run lint
+      - name: Test
+        run: npm --prefix apps/web run test
+      - name: Build
+        # `next build` type-checks as well as compiles, so this is the tsc pass too.
+        #
+        # NEXT_PUBLIC_API_BASE_URL is deliberately NOT set. The build succeeds without it and
+        # every panel then renders "api_not_configured" at runtime — fail-closed by design
+        # (next.config.ts). Setting a fake value here would make CI green on a bundle that
+        # points at nothing, which is worse than not testing the variable at all.
+        run: npm --prefix apps/web run build
+
+  pipelines:
+    name: pipelines self-checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - name: Install
+        # requirements-dev.in supplies pyarrow, which storage/localfs.py imports lazily for the
+        # offline parquet track — its selftest needs it and the runtime lock deliberately
+        # does not carry it.
+        run: pip install -r requirements.lock -r requirements-dev.in
+
+      # AGENTS.md: "`pipelines/` has no test runner ... Its verification idiom is a `main()`
+      # self-check on each module, runnable as `python -m pipelines.<module>`, usually with
+      # `--mock` or `--selftest` so it needs neither network nor database. Extend that idiom
+      # rather than replacing it."
+      #
+      # This is that idiom, driven. Every command below was run locally with DATABASE_URL
+      # unset and exited 0 before being listed. Modules with a `__main__` that is a real CLI
+      # rather than a self-check — `model.train` (requires --window), `universe.sync`
+      # (requires --file/--sync) — are deliberately absent: they would need arguments and a
+      # database, and a check that cannot run is not a check.
+      - name: Artifact
+        run: |
+          python -m pipelines.artifact.activate --selftest
+          python -m pipelines.artifact.inspect --selftest
+          python -m pipelines.artifact.load --selftest
+      - name: Ingestion
+        run: |
+          python -m pipelines.ingestion.fetch --selftest
+          python -m pipelines.ingestion.normalize --selftest
+          python -m pipelines.ingestion.provider --selftest
+          python -m pipelines.ingestion.quality --selftest
+      - name: Storage
+        run: |
+          python -m pipelines.storage.localfs --selftest
+          python -m pipelines.storage.mirror --selftest
+          python -m pipelines.storage.pg --selftest
+      - name: Returns and indicators
+        run: |
+          python -m pipelines.returns.build --mock
+          python -m pipelines.returns.matrix --mock
+          python -m pipelines.indicators.build --selftest
+      - name: Model and anchors
+        # These four take no flag: their `main()` IS the self-check and each asserts before
+        # printing. `anchors.greedy` checks monotonicity and the exact-vs-greedy ratio,
+        # `factor.model` recovers beta/sigma against known truth, `model.dcor` checks the
+        # matmul dCov against the naive form. `universe.file` parses and hashes the tracked
+        # universe list, so a corrupted list_stocks.txt fails here rather than mid-run.
+        run: |
+          python -m pipelines.anchors.greedy
+          python -m pipelines.factor.model
+          python -m pipelines.model.dcor
+          python -m pipelines.universe.file
+      - name: Schema files
+        # The one check `common.db` actually performs; running it bare only prints usage.
+        run: python -m pipelines.common.db --check-schema-files

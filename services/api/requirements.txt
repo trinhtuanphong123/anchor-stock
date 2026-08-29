@@ -1,0 +1,18 @@
+# services/api — API-only dependency manifest (P8, D-22).
+#
+# Delegates to ../../requirements-api.lock: the fully pinned closure of ../../requirements-api.in,
+# compiled under --constraint requirements.lock so it is a strict subset of the repository-wide
+# lock, version for version. 21 packages against that lock's 54.
+#
+# This reverses the earlier arrangement, in which both the API and the pipeline worker installed
+# the single root lock so one venv could serve either role. That was written for a development
+# machine. It does not survive a metered deployment build: the root lock also carries vnstock and
+# vnstock's mandatory closure (pandas, numpy, matplotlib, seaborn, wordcloud, pillow, openpyxl),
+# none of which any path in services/api/app imports. The root lock is still what a local
+# all-purpose venv installs.
+#
+# Canonical sources: ../../requirements-api.in (direct) and ../../requirements-api.lock (pinned).
+# Regeneration procedure — including the --constraint flag, which is NOT optional — is in the
+# header of ../../requirements-api.lock. Alternatives and the divergence risk: docs/decisions/
+# D-22-split-api-dependency-manifest.md.
+-r ../../requirements-api.lock

@@ -1,0 +1,38 @@
+# anchor-stock — project metadata and tool configuration.
+#
+# WHAT THIS FILE DOES NOT DO, and why, because the gap is deliberate.
+#
+# It does not declare the dependency sets. Those stay in requirements*.in, compiled into
+# requirements.lock and requirements-api.lock, and the reason is that the two lock files carry
+# their own regeneration procedure in their headers — a pinned pip-tools compiler inside a
+# disposable `python:3.13-slim` container, because a Windows-resolved lock is not authoritative
+# for a Linux deployment. Moving the declarations here would mean recompiling both locks through
+# that procedure. That cannot be run on this machine, and a pyproject whose extras had never been
+# compiled would leave the repository with pins that do not provably match their declared source
+# — a worse state than the one it replaced.
+#
+# The defect that migration was meant to fix has been fixed directly instead. requirements.in
+# used to restate the API's four packages verbatim, with a comment admitting "nothing checks the
+# agreement — there is no CI". It now includes requirements-api.in by reference, so there is one
+# source and nothing left to disagree. `scripts/check_locks.py` verifies each .in against its
+# lock, and CI runs it — so the sentence that said nothing checks it is no longer true.
+#
+# Migrating to [project.dependencies] remains worth doing on a machine that can run the
+# container. It is a separate change with its own verification, not a side effect of this one.
+
+[project]
+name = "anchor-model"
+version = "0.2.0"
+description = "Representative-ticker (anchor) selection for the Vietnamese equity market"
+requires-python = ">=3.13"
+
+# --- ruff ------------------------------------------------------------------
+# Folded in from the ruff.toml this file replaces; the settings are unchanged except for the
+# `_archive` exclusion, dropped because no such directory exists in this repository.
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+extend-exclude = ["apps/web", "supabase/migrations", "data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "UP", "B"]

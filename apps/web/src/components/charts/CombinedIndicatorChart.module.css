@@ -1,0 +1,65 @@
+/* Combined technical chart (P10). Four panes, one time axis. Tokens only.
+
+   The four series colours used to be declared here, three of them as raw hex — the acknowledged
+   exception to "never a hardcoded hex", and the reason MA20/MA50/RSI looked identical in both
+   themes. P11 moved them into globals.css as --chart-ma20 / --chart-ma50 / --chart-rsi, backed by
+   the cluster ramp, so they now theme like everything else. Their meaning is unchanged and still
+   worth stating: deliberately NOT the directional pair, because MA20 and MA50 are not "good" or
+   "bad" — they are two different lines, and colouring them green/red would read as a signal. */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-stack, 0.75rem);
+  position: relative;
+}
+
+.svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card, 8px);
+  background: var(--surface-card);
+}
+
+.line {
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.axis {
+  stroke: var(--data-axis);
+  stroke-width: 1;
+}
+
+.guide {
+  stroke: var(--data-axis);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.guideFaint {
+  stroke: var(--data-grid);
+  stroke-width: 1;
+}
+
+.volBar {
+  fill: var(--data-neutral);
+  opacity: 0.55;
+}
+
+.paneLabel {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  fill: var(--text-3);
+}
+
+.axisValue {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--text-4);
+}

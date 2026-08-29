@@ -1,0 +1,193 @@
+# ClusterWeb — authoritative production dependency lock (P14-S02).
+#
+# Fully pinned (==) transitive closure of requirements.in for BOTH the FastAPI API and the Python
+# worker/scheduler/bootstrap. This is what a local all-purpose virtual environment installs:
+#
+#     python -m pip install --requirement requirements.lock
+#
+# It is NO LONGER what deployment installs. As of P8 (D-22) services/api builds from
+# requirements-api.lock, a 21-package strict subset of this file compiled under
+# `--constraint requirements.lock` — so the two agree version for version and the API build stops
+# dragging in vnstock's closure. This file stays the canonical source for those shared pins;
+# regenerate it first, then requirements-api.lock against it.
+#
+# Authoritatively generated and verified on **Debian-slim-based Linux x86_64** (python:3.13-slim,
+# glibc, cp313 manylinux ABI) via a disposable Docker container — so Linux-only closure (e.g.
+# uvloop for uvicorn[standard]) is included and Windows-only packages are excluded. A
+# Windows-resolved lock is NOT authoritative. Regenerated 2026-08-18 (P6.0) after correcting the
+# vnstock pin below — the prior lock (vnstock==3.5.1) disagreed with the interpreter this repo
+# actually runs (4.0.4) and with pipelines/ingestion/provider.py, which was written and probed
+# against 4.0.4 specifically.
+#
+# Regenerate (never hand-edit the pins) after changing requirements.in, in a fresh disposable
+# Linux environment with the exact interpreter and the exact ephemeral compiler (never a runtime
+# dep):
+#     docker run --rm --platform linux/amd64 -v "<repo>:/work" python:3.13-slim bash -c '
+#         pip install -q "pip==24.3.1" "pip-tools==7.5.3"
+#         python -m piptools compile --resolver=backtracking --no-header \
+#             --output-file /work/requirements.lock /work/requirements.in'
+# (pip-tools 7.5.3 imports a pip-internal symbol pip>=25 removed, so pip is pinned down for the
+# compile step only — the pin does not propagate into this lock file.)
+#
+# The vnstock closure (matplotlib, seaborn, wordcloud, openpyxl, pillow, ...) is vnstock's own
+# mandatory install_requires, NOT a project-chosen analytical library; the surfaced Leiden path is
+# pure-numpy. No SciPy/scikit-learn/igraph/leidenalg/K-Means library is present.
+annotated-doc==0.0.4
+    # via fastapi
+annotated-types==0.7.0
+    # via pydantic
+anyio==4.14.2
+    # via
+    #   starlette
+    #   watchfiles
+beautifulsoup4==4.15.0
+    # via vnstock
+certifi==2026.6.17
+    # via requests
+cffi==2.1.0
+    # via vnai
+charset-normalizer==3.4.9
+    # via requests
+click==8.4.2
+    # via uvicorn
+contourpy==1.3.3
+    # via matplotlib
+cycler==0.12.1
+    # via
+    #   matplotlib
+    #   vnstock-ezchart
+et-xmlfile==2.0.0
+    # via openpyxl
+fastapi==0.139.0
+    # via -r /work/requirements.in
+fonttools==4.63.0
+    # via matplotlib
+h11==0.16.0
+    # via uvicorn
+httptools==0.8.0
+    # via uvicorn
+idna==3.18
+    # via
+    #   anyio
+    #   requests
+importlib-metadata==9.0.0
+    # via vnstock
+kiwisolver==1.5.0
+    # via matplotlib
+matplotlib==3.11.0
+    # via
+    #   mplfinance
+    #   seaborn
+    #   vnstock-ezchart
+mplfinance==0.12.10b0
+    # via vnstock-ezchart
+numpy==2.2.6
+    # via
+    #   -r /work/requirements.in
+    #   contourpy
+    #   matplotlib
+    #   pandas
+    #   seaborn
+    #   vnstock-ezchart
+openpyxl==3.1.5
+    # via
+    #   vnstock
+    #   vnstock-ezchart
+packaging==26.2
+    # via
+    #   matplotlib
+    #   vnstock
+pandas==2.3.3
+    # via
+    #   -r /work/requirements.in
+    #   mplfinance
+    #   seaborn
+    #   vnstock
+    #   vnstock-ezchart
+pillow==12.3.0
+    # via matplotlib
+psutil==7.2.2
+    # via
+    #   vnai
+    #   vnstock
+psycopg2-binary==2.9.12
+    # via -r /work/requirements.in
+pycparser==3.0
+    # via cffi
+pydantic==2.13.4
+    # via
+    #   fastapi
+    #   pydantic-settings
+    #   vnstock
+pydantic-core==2.46.4
+    # via pydantic
+pydantic-settings==2.14.2
+    # via -r /work/requirements.in
+pyparsing==3.3.2
+    # via matplotlib
+python-dateutil==2.9.0.post0
+    # via
+    #   matplotlib
+    #   pandas
+python-dotenv==1.2.2
+    # via
+    #   -r /work/requirements.in
+    #   pydantic-settings
+    #   uvicorn
+pytz==2026.2
+    # via
+    #   pandas
+    #   vnstock
+pyyaml==6.0.3
+    # via uvicorn
+requests==2.34.2
+    # via
+    #   vnai
+    #   vnstock
+    #   vnstock-ezchart
+seaborn==0.13.2
+    # via
+    #   vnstock
+    #   vnstock-ezchart
+six==1.17.0
+    # via python-dateutil
+soupsieve==2.8.4
+    # via beautifulsoup4
+starlette==1.3.1
+    # via fastapi
+tenacity==9.1.4
+    # via vnstock
+typing-extensions==4.16.0
+    # via
+    #   beautifulsoup4
+    #   fastapi
+    #   pydantic
+    #   pydantic-core
+    #   typing-inspection
+typing-inspection==0.4.2
+    # via
+    #   fastapi
+    #   pydantic
+    #   pydantic-settings
+tzdata==2026.3
+    # via pandas
+urllib3==2.7.0
+    # via requests
+uvicorn[standard]==0.51.0
+    # via -r /work/requirements.in
+uvloop==0.22.1
+    # via uvicorn
+vnai==2.5.0
+    # via vnstock
+vnstock==4.0.4
+    # via
+    #   -r /work/requirements.in
+    #   vnstock-ezchart
+vnstock-ezchart==1.0.2
+    # via vnstock
+watchfiles==1.2.0
+    # via uvicorn
+websockets==16.1
+    # via uvicorn
+zipp==4.1.0
+    # via importlib-metadata

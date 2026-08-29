@@ -1,0 +1,38 @@
+# Named local Postgres for the anchor-model system — P6 (S1).
+#
+# Deliberately NOT the P0 pattern: P0 verified the nine baseline migrations against a throwaway
+# container that was destroyed after the check. This one is named and backed by a docker volume
+# so it survives between sessions — P7-P10 (indicators, API, dashboard) develop against data
+# this container holds, not against a freshly-applied empty schema each time.
+#
+# Host port 55432, not 5432: this machine already has a local PostgreSQL 18 listening on 5432
+# (`C:\Program Files\PostgreSQL\18\bin\psql.exe`), and this container must not collide with it
+# or be mistaken for it.
+#
+# Usage:
+#   docker compose -f scripts/db/compose.db.yml up -d
+#   docker compose -f scripts/db/compose.db.yml down          # stop, KEEP the volume
+#   docker compose -f scripts/db/compose.db.yml down -v       # stop and discard all data
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: datn_pg
+    environment:
+      POSTGRES_USER: datn
+      POSTGRES_PASSWORD: datn_local_dev
+      POSTGRES_DB: datn
+    ports:
+      - "55432:5432"
+    volumes:
+      - datn_pg_data:/var/lib/postgresql/data
+      - ../../supabase/migrations:/migrations:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U datn -d datn"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  datn_pg_data:
+    name: datn_pg_data

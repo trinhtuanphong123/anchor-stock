@@ -1,0 +1,78 @@
+/* Market screen — the sector treemap only. Everything else this screen uses (KPI cards, the
+   movers table, the pill toggle) lives in the shared components/ui.module.css. */
+
+/* --- Sector treemap ------------------------------------------------------ */
+
+/* The wrapper no longer draws a border: the treemap now sits inside MarketHome's `.panel`,
+   which supplies one. Two nested hairlines read as a rendering fault, not as structure. */
+.treemapWrap {
+  position: relative;
+  /* Fills the panel body rather than deriving a height from a fixed aspect ratio — the tiles
+     are laid out in the box this reports, so the box has to be the real one. */
+  flex: 1;
+  min-height: 260px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.treemap {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* A 1px gutter, not 2px. At 2px the grid of seams competed with the tiles for attention; the
+   hairline is enough to separate them and leaves the colour doing the work. */
+.treemapTile {
+  stroke: var(--surface-card);
+  stroke-width: 1;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.treemapTile:hover,
+.treemapTile:focus-visible {
+  opacity: 0.82;
+  outline: none;
+}
+
+/* --- Labels: HTML over the SVG, one box per tile -------------------------- */
+
+/* The layer is positioned, not the labels' parent: each label carries its own percent geometry,
+   matching the tile it names exactly at every container width. */
+.treemapLabels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.tileLabel {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 8px;
+  /* The whole point of the rewrite. A label cannot leave the box that names its own tile. */
+  overflow: hidden;
+  font-family: var(--font-sans);
+  line-height: 1.25;
+}
+
+.tileName {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: var(--fw-semibold, 600);
+  color: var(--text-1);
+  /* -webkit-line-clamp is set inline: it is the one property that varies by tile size tier. */
+}
+
+.tilePct {
+  font-family: var(--font-mono);
+  color: var(--text-2);
+  letter-spacing: var(--tracking-data);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

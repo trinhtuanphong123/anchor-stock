@@ -1,0 +1,86 @@
+ticker,sector,industry,label_source
+AAA,Nguyên vật liệu,SX Nhựa - Hóa chất,vnstock
+ACB,Tài chính,Ngân hàng,vnstock
+ANV,Nông nghiệp,Chế biến Thủy sản,vnstock
+ASM,Nông nghiệp,Chế biến Thủy sản,vnstock
+BCM,Bất động sản và Xây dựng,Bất động sản,vnstock
+BID,Tài chính,Ngân hàng,vnstock
+BMP,Nguyên vật liệu,SX Nhựa - Hóa chất,vnstock
+BVH,Tài chính,Bảo hiểm,vnstock
+BWE,Năng lượng,Tiện ích,vnstock
+CII,Bất động sản và Xây dựng,Xây dựng,vnstock
+CMG,Công nghệ,Công nghệ và thông tin,vnstock
+CTD,Bất động sản và Xây dựng,Xây dựng,vnstock
+CTG,Tài chính,Ngân hàng,vnstock
+DBC,Hàng tiêu dùng,Thực phẩm - Đồ uống,vnstock
+DCM,Nguyên vật liệu,SX Nhựa - Hóa chất,vnstock
+DGC,Nguyên vật liệu,SX Nhựa - Hóa chất,vnstock
+DGW,Dịch vụ,Bán buôn,vnstock
+DIG,Bất động sản và Xây dựng,Bất động sản,vnstock
+DPM,Nguyên vật liệu,SX Nhựa - Hóa chất,vnstock
+DXG,Bất động sản và Xây dựng,Bất động sản,vnstock
+EIB,Tài chính,Ngân hàng,vnstock
+FPT,Công nghệ,Công nghệ và thông tin,vnstock
+FRT,Dịch vụ,Bán lẻ,vnstock
+FTS,Tài chính,Chứng khoán,vnstock
+GAS,Năng lượng,Tiện ích,vnstock
+GEX,Công nghiệp,Thiết bị điện,vnstock
+GMD,Dịch vụ,Vận tải - kho bãi,vnstock
+GVR,Nguyên vật liệu,SX Nhựa - Hóa chất,vnstock
+HAG,Nông nghiệp,Nông - Lâm - Ngư,vnstock
+HAH,Dịch vụ,Vận tải - kho bãi,vnstock
+HCM,Tài chính,Chứng khoán,vnstock
+HDB,Tài chính,Ngân hàng,vnstock
+HDC,Bất động sản và Xây dựng,Bất động sản,vnstock
+HDG,Bất động sản và Xây dựng,Bất động sản,vnstock
+HPG,Nguyên vật liệu,Vật liệu xây dựng,vnstock
+HSG,Nguyên vật liệu,Vật liệu xây dựng,vnstock
+HT1,Nguyên vật liệu,Vật liệu xây dựng,vnstock
+IDI,Nông nghiệp,Chế biến Thủy sản,vnstock
+IJC,Bất động sản và Xây dựng,Bất động sản,vnstock
+KBC,Bất động sản và Xây dựng,Bất động sản,vnstock
+KDC,Hàng tiêu dùng,Thực phẩm - Đồ uống,vnstock
+KDH,Bất động sản và Xây dựng,Bất động sản,vnstock
+KOS,Bất động sản và Xây dựng,Bất động sản,vnstock
+LCG,Bất động sản và Xây dựng,Xây dựng,vnstock
+LPB,Tài chính,Ngân hàng,vnstock
+MBB,Tài chính,Ngân hàng,vnstock
+MSB,Tài chính,Ngân hàng,vnstock
+MSN,Hàng tiêu dùng,Thực phẩm - Đồ uống,vnstock
+MWG,Dịch vụ,Bán lẻ,vnstock
+NKG,Nguyên vật liệu,Vật liệu xây dựng,vnstock
+NLG,Bất động sản và Xây dựng,Bất động sản,vnstock
+NT2,Năng lượng,Tiện ích,vnstock
+NVL,Bất động sản và Xây dựng,Bất động sản,vnstock
+PC1,Bất động sản và Xây dựng,Xây dựng,vnstock
+PDR,Bất động sản và Xây dựng,Bất động sản,vnstock
+PET,Dịch vụ,Bán buôn,vnstock
+PHR,Nguyên vật liệu,SX Nhựa - Hóa chất,vnstock
+PLX,Dịch vụ,Bán buôn,vnstock
+PNJ,Dịch vụ,Bán lẻ,vnstock
+POW,Năng lượng,Tiện ích,vnstock
+PTB,Công nghiệp,SX Phụ trợ,vnstock
+PVD,Năng lượng,Khai khoáng,vnstock
+PVT,Dịch vụ,Vận tải - kho bãi,vnstock
+REE,Bất động sản và Xây dựng,Xây dựng,vnstock
+SAB,Hàng tiêu dùng,Thực phẩm - Đồ uống,vnstock
+SBT,Hàng tiêu dùng,Thực phẩm - Đồ uống,vnstock
+SCS,Dịch vụ,Vận tải - kho bãi,vnstock
+SJS,Bất động sản và Xây dựng,Bất động sản,vnstock
+SSI,Tài chính,Chứng khoán,vnstock
+STB,Tài chính,Ngân hàng,vnstock
+SZC,Bất động sản và Xây dựng,Bất động sản,vnstock
+TCB,Tài chính,Ngân hàng,vnstock
+TCH,Bất động sản và Xây dựng,Bất động sản,vnstock
+TPB,Tài chính,Ngân hàng,vnstock
+VCB,Tài chính,Ngân hàng,vnstock
+VCG,Bất động sản và Xây dựng,Xây dựng,vnstock
+VCI,Tài chính,Chứng khoán,vnstock
+VHC,Nông nghiệp,Chế biến Thủy sản,vnstock
+VHM,Bất động sản và Xây dựng,Bất động sản,vnstock
+VIB,Tài chính,Ngân hàng,vnstock
+VIC,Bất động sản và Xây dựng,Bất động sản,vnstock
+VJC,Dịch vụ,Vận tải - kho bãi,vnstock
+VNM,Hàng tiêu dùng,Thực phẩm - Đồ uống,vnstock
+VPB,Tài chính,Ngân hàng,vnstock
+VRE,Bất động sản và Xây dựng,Bất động sản,vnstock

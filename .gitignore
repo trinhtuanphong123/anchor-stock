@@ -1,0 +1,43 @@
+# anchor-stock — what stays out of a PRIVATE repository.
+#
+# The list is short on purpose. This repository is private (D-29), so nothing is excluded to
+# keep it from readers — only things that are regenerable, machine-local, or actually secret.
+# In particular `docs/` is TRACKED here, which is the point of D-29 and the reverse of what
+# D-23/D-28 arranged in the public repository this one supersedes.
+#
+# Nothing here hides a source file. If a path is missing from a clone, it is because it can be
+# rebuilt, not because it was withheld — which is exactly the property the previous arrangement
+# could not offer.
+
+# --- Secrets ---------------------------------------------------------------
+# .env.example is tracked and carries the variable NAMES with no values.
+.env
+.env.*
+!.env.example
+
+# --- Python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# --- Node / Next -----------------------------------------------------------
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# --- Regenerable data ------------------------------------------------------
+# raw/ is provider payloads exactly as received; processed/ is typed parquet. Both are rebuilt
+# by docs/RUNBOOK.md §3. reference/ and artifacts/ are deliberately NOT ignored: the sector map
+# is curated by hand and the artifact is a frozen parameter set the dashboard actually serves.
+data/raw/
+data/processed/
+
+# --- Machine-local ---------------------------------------------------------
+.scratch/
+.DS_Store
+Thumbs.db

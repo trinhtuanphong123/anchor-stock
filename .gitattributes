@@ -1,0 +1,20 @@
+# Line endings and binary safety.
+#
+# The predecessor had no .gitattributes, which left two things to luck.
+#
+# 1. `data/artifacts/<id>/P.npy` is a NumPy array. Git's binary heuristic did classify it
+#    correctly, but "did" is not "will": a heuristic that guesses wrong once corrupts the one
+#    artifact the dashboard serves, and the artifact's id is a content hash, so the corruption
+#    would surface as a validation failure far from its cause. Declared explicitly instead.
+#
+# 2. `.github/workflows/ci.yml` carries multi-line `run: |` blocks. A workflow committed with
+#    CRLF hands the Linux runner commands with a trailing \r. Normalising to LF in the
+#    repository removes the possibility.
+#
+# PowerShell keeps CRLF: scripts/db/*.ps1 are run by Windows PowerShell on the development
+# machine, which is the only place they run.
+
+*               text=auto eol=lf
+*.ps1           text eol=crlf
+*.npy           binary
+*.woff2         binary

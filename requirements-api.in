@@ -1,0 +1,25 @@
+# services/api — direct production dependencies (P8, D-22).
+#
+# The FastAPI read layer installs from this file's compiled lock (requirements-api.lock), NOT
+# from the repository-wide requirements.lock. Reason, in full, in docs/decisions/
+# D-22-split-api-dependency-manifest.md: the wide lock also carries vnstock and its mandatory
+# closure (pandas, numpy, matplotlib, seaborn, wordcloud, pillow, openpyxl), none of which
+# services/api imports, and a metered deployment build installs the whole thing on every push.
+#
+# THIS FILE MUST STAY IDENTICAL TO the `# --- API (services/api/app) ---` block in
+# requirements.in. The two overlap by design and nothing checks the agreement — there is no CI.
+# It is four lines and a strict subset, so the comparison is a glance, not a diff.
+#
+# Every entry traces to a real import in services/api/app: main.py (fastapi), the uvicorn ASGI
+# server that runs it, config.py (pydantic-settings), db/connection.py and db/ping.py (psycopg2).
+# Do NOT add a package that no API path imports, and do NOT add test/lint/notebook packages.
+#
+# Regenerate the lock authoritatively in a disposable Linux container — never on Windows, and
+# never by hand-editing the pins. Same procedure and same pinned compiler as requirements.lock;
+# the command is in that file's header, with requirements-api.in / requirements-api.lock
+# substituted for the paths.
+
+fastapi>=0.111,<1
+uvicorn[standard]>=0.30,<1
+pydantic-settings>=2,<3
+psycopg2-binary>=2.9,<3

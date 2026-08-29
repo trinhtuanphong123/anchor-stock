@@ -1,0 +1,857 @@
+/* =============================================================================
+   Anchor Model — Design System tokens + Shell layout
+   Source of truth: docs/plans/completed/p11-dashboard-redesign.md
+   (the DESIGN_SYSTEM.md this line used to cite was inherited from the Leiden codebase and has
+   never existed in this repository — P11 repointed it rather than leave a dangling reference)
+   Palette: Terminal — a trading-desk palette derived from TradingView. Raw ramps in §2,
+   aliases in §2b/§3. Supersedes Strata (P11), whose alias NAMES are all kept: that indirection
+   is what made this swap a ramp edit rather than a component-by-component rewrite, exactly as
+   the P11 note in this position predicted.
+   Rules: only var(--*) in component styles; never hardcoded hex.
+   Light = :root default; dark = [data-theme="dark"] remaps the same aliases.
+   ============================================================================= */
+
+/* --- 1. Font stacks -------------------------------------------------------- */
+
+/* Roboto at Regular 400 throughout, at the owner's direction. The weight scale below therefore
+   tops out at 500: Roboto Medium is the emphasis step, and 600/700 are not loaded at all, so a
+   `font-weight: 600` left anywhere in the component layer would be synthesised by the browser
+   into a smeared faux-bold. --fw-semibold is kept as a NAME and remapped to 500 rather than
+   deleted, so no CSS Module had to be touched to make that true. */
+
+:root {
+  /* Set by next/font via className on <html>; fallbacks used when unloaded. */
+  --font-sans: var(--font-sans-loaded, "Roboto"), system-ui, sans-serif;
+  --font-mono: var(--font-mono-loaded, "Roboto Mono"), ui-monospace, monospace;
+  /* No serif face is loaded any more — the prose roles fall back to the sans stack. Keeping the
+     variable means --type-prose still resolves; dropping it would break that role silently. */
+  --font-serif: var(--font-sans);
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 500;
+}
+
+/* --- 2. Colour ramps — Strata (P11 S1) ------------------------------------- */
+
+/* Terminal. The neutrals are TradingView's own chart-UI slate — #131722 ink, #787b86 muted,
+   #e0e3eb rule — and the directional pair is its #089981 / #f23645. These are the RAW ramps and
+   are never referenced by a component; §2b and §3 express every semantic alias in terms of them.
+
+   ONE PLACE THIS PALETTE DOES NOT COPY TRADINGVIEW, and the measurements that decide it.
+   Contrast against the light canvas #ffffff, computed rather than eyeballed:
+
+     #089981  (TV green)  3.57:1     #f23645  (TV red)  3.90:1
+     #07806a  (pos-600)   4.88:1     #d32133  (neg-600) 5.20:1
+
+   TradingView's own green and red are chart-mark colours: on a 1.5px stroke or a filled tile
+   they are fine, and at 13px they fail AA outright. The movers and liquidity tables put those
+   two colours on small mono text in nearly every row, so the ramps carry BOTH steps — a -600
+   text step and a -500 mark step — and §2b binds them to two different aliases. Using one token
+   for both is the mistake this split exists to prevent, and it is the same reasoning P11 wrote
+   down here when it chose -600 over -500 for the previous palette.
+
+   Border steps sit at 1.2–1.9:1 against their canvas. That is deliberate and is not a WCAG
+   1.4.11 failure: these are decorative hairlines separating panels that are already separated by
+   background, not the sole indicator of any control's boundary. Focus rings and control borders
+   use --accent and --border-strong, which are measured above. */
+
+:root {
+  /* Neutral slate — TradingView's chart UI scale */
+  --ink-950: #0c0e15;   /* deepest sunken, dark theme only */
+  --ink-900: #131722;   /* TV dark canvas / light-theme ink */
+  --ink-800: #1e222d;   /* TV dark panel */
+  --ink-700: #2a2e39;   /* TV dark rule */
+  --ink-600: #434651;   /* TV secondary text (light), raised (dark) */
+  --ink-500: #5d616b;   /* light muted, measured 6.20:1 on white */
+  --ink-400: #787b86;   /* TV muted — decorative/disabled only in light */
+  --ink-300: #9598a1;
+  --ink-200: #d1d4dc;   /* TV strong rule / dark primary text */
+  --ink-150: #e0e3eb;   /* TV default rule — the signature hairline */
+  --ink-100: #f0f3fa;   /* TV sunken panel */
+  --ink-75: #f5f7fb;
+  --ink-50: #f8f9fd;    /* TV page tint */
+  --ink-25: #fcfcfe;
+  --white: #ffffff;
+
+  /* Brand accent: TradingView blue. -500 measures 4.90:1 on white, so it carries link and
+     active-tab text in light without a darker step underneath it. */
+  --blue-50: #eaf0ff;
+  --blue-100: #d3e0ff;
+  --blue-200: #a8c3ff;
+  --blue-300: #7aa7ff;
+  --blue-400: #5b8dff;
+  --blue-500: #2962ff;
+  --blue-600: #1e53d6;
+  --blue-700: #1741ab;
+  --blue-800: #12327f;
+
+  /* Teal — secondary / structural relations (anchor grouping, never price direction) */
+  --teal-50: #e6f5f3;
+  --teal-100: #c2e7e1;
+  --teal-300: #58c4b4;
+  --teal-500: #12a594;
+  --teal-600: #0d8377;
+  --teal-700: #0a635a;
+
+  /* Directional outcome — green up / red down, the Vietnamese market convention (P10 S6) and
+     TradingView's. -500 is the MARK step (strokes, fills, treemap tiles); -600 is the TEXT step.
+     See the measurements in the block above for why they are not the same colour. */
+  --pos-50: #e6f6f1;
+  --pos-100: #b8e6d8;
+  --pos-500: #089981;   /* TradingView green, verbatim */
+  --pos-600: #07806a;
+  --pos-700: #05604f;
+
+  --neg-50: #fdecee;
+  --neg-100: #f8ccd1;
+  --neg-500: #f23645;   /* TradingView red, verbatim */
+  --neg-600: #d32133;
+  --neg-700: #a31826;
+
+  /* Status */
+  --amber-50: #fff6e5;
+  --amber-100: #ffe4b0;
+  --amber-500: #e8a33d;
+  --amber-600: #b97d1f;
+  --amber-700: #8a5c14;
+
+  --red-500: #f23645;
+  --red-600: #d32133;
+}
+
+/* --- 2b. Semantic aliases — Light default ---------------------------------- */
+
+:root {
+  /* Surfaces */
+  --canvas: var(--ink-50);
+  --surface-card: var(--white);
+  --surface-sunken: var(--ink-75);
+  --surface-raised: var(--white);
+  --surface-hover: var(--ink-50);
+  --surface-active: var(--ink-100);
+  --surface-inverse: var(--ink-900);
+
+  /* Text */
+  --text-1: var(--ink-950);
+  --text-2: var(--ink-800);
+  --text-3: var(--ink-500);
+  --text-4: var(--ink-400);
+  --text-on-accent: var(--white);
+  --text-on-inverse: var(--ink-50);
+  --text-link: var(--blue-600);
+
+  /* Borders */
+  --border-subtle: var(--ink-100);
+  --border-default: var(--ink-150);
+  --border-strong: var(--ink-200);
+  --divider: var(--ink-100);
+
+  /* Accent (steel blue — interactive only) */
+  --accent: var(--blue-500);
+  --accent-hover: var(--blue-600);
+  --accent-active: var(--blue-700);
+  --accent-subtle: var(--blue-50);
+  --accent-border: var(--blue-100);
+  --accent-text: var(--blue-600);
+  --focus-ring: rgba(47, 94, 142, 0.28);
+
+  /* Stability — teal / amber / ink
+     These encode grouping REPRODUCIBILITY, never stock quality or action guidance. */
+  --status-stable-fg: var(--teal-700);
+  --status-stable-bg: var(--teal-50);
+  --status-stable-border: var(--teal-100);
+  --status-stable-solid: var(--teal-500);
+
+  --status-weak-fg: var(--amber-700);
+  --status-weak-bg: var(--amber-50);
+  --status-weak-border: var(--amber-100);
+  --status-weak-solid: var(--amber-500);
+
+  --status-ungrouped-fg: var(--ink-600);
+  --status-ungrouped-bg: var(--ink-50);
+  --status-ungrouped-border: var(--ink-150);
+  --status-ungrouped-solid: var(--ink-400);
+
+  /* Freshness / operational */
+  --status-fresh-fg: var(--pos-700);
+  --status-fresh-bg: var(--pos-50);
+  --status-fresh-border: var(--pos-100);
+  --status-fresh-solid: var(--pos-500);
+
+  --status-stale-fg: var(--amber-700);
+  --status-stale-bg: var(--amber-50);
+  --status-stale-border: var(--amber-100);
+  --status-stale-solid: var(--amber-500);
+
+  --status-info-fg: var(--blue-700);
+  --status-info-bg: var(--blue-50);
+  --status-info-border: var(--blue-100);
+  --status-info-solid: var(--blue-500);
+
+  /* Data — directional pair. Green up / red down, the Vietnamese market convention (P10 S6) and
+     TradingView's. The reasoning P11 recorded here is untouched: the coloured quantity is a
+     price change, read against every other board a user opens, so a non-directional palette
+     would be a statement the data does not make.
+
+     TWO TOKENS PER DIRECTION, not one. --data-pos/--data-neg are the TEXT step and colour the
+     13px mono cells in `.pos`/`.neg`; --data-pos-mark/--data-neg-mark are TradingView's own
+     green and red and colour strokes, area fills and treemap tiles, where the same hue is legal
+     because the mark is not text. Measured ratios are in §2's header. A component that puts a
+     -mark token on text has reintroduced the bug the split exists to prevent. */
+  --data-pos: var(--pos-600);
+  --data-neg: var(--neg-600);
+  --data-pos-mark: var(--pos-500);
+  --data-neg-mark: var(--neg-500);
+  --data-neutral: var(--ink-400);
+  --data-grid: var(--ink-150);
+  --data-axis: var(--ink-200);
+
+  /* Chart furniture, TradingView's own idiom. The crosshair is a dashed neutral rule, not a
+     coloured one: it marks a position, and a coloured one would compete with the series. */
+  --chart-crosshair: var(--ink-400);
+  --chart-area-top: color-mix(in srgb, var(--data-pos-mark) 22%, transparent);
+  --chart-area-bottom: color-mix(in srgb, var(--data-pos-mark) 0%, transparent);
+  --chart-area-top-neg: color-mix(in srgb, var(--data-neg-mark) 22%, transparent);
+  --chart-area-bottom-neg: color-mix(in srgb, var(--data-neg-mark) 0%, transparent);
+  /* The dotted "previous close" rule TradingView draws across a session chart. */
+  --chart-baseline: var(--amber-500);
+
+  /* Indicator series — promoted out of CombinedIndicatorChart.module.css in P11, where they were
+     the last three hardcoded hexes in the component layer and did not theme at all. */
+  --chart-ma20: var(--cluster-5);
+  --chart-ma50: var(--cluster-4);
+  --chart-rsi: var(--cluster-11);
+  --chart-band: var(--data-neutral);
+
+  /* Cluster identity — 12 mid-tone categorical hues, identity only, no good/bad meaning */
+  --cluster-1: #3a6ea5;
+  --cluster-2: #c26b3e;
+  --cluster-3: #4e8a6b;
+  --cluster-4: #8a6bb0;
+  --cluster-5: #c0913b;
+  --cluster-6: #b5577a;
+  --cluster-7: #4aa0a8;
+  --cluster-8: #7b8a4e;
+  --cluster-9: #9a5b4a;
+  --cluster-10: #5c6bc0;
+  --cluster-11: #4f7e91;
+  --cluster-12: #a06fa0;
+}
+
+/* --- 3. Semantic aliases — Dark override ----------------------------------- */
+
+/* Unlike Strata, Terminal's dark half is TradingView's ACTUAL dark chart UI rather than something
+   authored from the light ramp — #131722 canvas, #1e222d panel, #2a2e39 rule, #d1d4dc text. Two
+   families still cannot be carried over unchanged, and the measurements are why (against --canvas
+   #131722, and against the panel #1e222d where a token lands on a card):
+
+     --blue-500 #2962ff  3.65:1 / 3.24:1  — TV's own blue; fails AA on its own dark background
+     --blue-400 #5b8dff  5.71:1 / 5.07:1  — what the accent uses in dark
+     --pos-500  #089981  5.01:1 / 4.45:1  — legal as a mark, marginal as text on a card
+     --pos-400  lifted   7.53:1 / 6.68:1  — the text step
+     --neg-500  #f23645  4.59:1 / 4.08:1  — same story
+     --neg-400  lifted   6.45:1 / 5.72:1
+
+   TradingView itself does not clear AA on several of these; this palette borrows its hues and
+   not that. Same move P10 and P11 each recorded in this position, on their own numbers. */
+
+[data-theme="dark"] {
+  --canvas: var(--ink-900);
+  --surface-card: var(--ink-800);
+  --surface-sunken: var(--ink-950);
+  --surface-raised: var(--ink-700);
+  --surface-hover: #252936;
+  --surface-active: var(--ink-700);
+  --surface-inverse: var(--ink-100);
+
+  --text-1: var(--ink-200);
+  --text-2: #b2b5be;
+  --text-3: #8b8f9a;
+  --text-4: var(--ink-400);
+  --text-on-accent: var(--white);
+  --text-on-inverse: var(--ink-900);
+  --text-link: var(--blue-300);
+
+  --border-subtle: var(--ink-700);
+  --border-default: #363a45;
+  --border-strong: var(--ink-600);
+  --divider: var(--ink-700);
+
+  --accent: var(--blue-400);
+  --accent-hover: var(--blue-300);
+  --accent-active: var(--blue-200);
+  --accent-subtle: rgba(41, 98, 255, 0.18);
+  --accent-border: rgba(91, 141, 255, 0.38);
+  --accent-text: var(--blue-300);
+  --focus-ring: rgba(91, 141, 255, 0.45);
+
+  --status-stable-fg: var(--teal-300);
+  --status-stable-bg: rgba(30, 128, 121, 0.16);
+  --status-stable-border: rgba(30, 128, 121, 0.36);
+  --status-stable-solid: var(--teal-300);
+
+  --status-weak-fg: var(--amber-100);
+  --status-weak-bg: rgba(183, 121, 31, 0.16);
+  --status-weak-border: rgba(183, 121, 31, 0.36);
+  --status-weak-solid: #d8a24a;
+
+  --status-ungrouped-fg: var(--ink-300);
+  --status-ungrouped-bg: rgba(120, 133, 150, 0.12);
+  --status-ungrouped-border: rgba(120, 133, 150, 0.26);
+  --status-ungrouped-solid: var(--ink-400);
+
+  --status-fresh-fg: var(--pos-100);
+  --status-fresh-bg: rgba(46, 125, 91, 0.18);
+  --status-fresh-border: rgba(46, 125, 91, 0.38);
+  --status-fresh-solid: #4fa87b;
+
+  --status-stale-fg: var(--amber-100);
+  --status-stale-bg: rgba(183, 121, 31, 0.16);
+  --status-stale-border: rgba(183, 121, 31, 0.36);
+  --status-stale-solid: #d8a24a;
+
+  --status-info-fg: var(--blue-200);
+  --status-info-bg: rgba(118, 161, 204, 0.14);
+  --status-info-border: rgba(118, 161, 204, 0.32);
+  --status-info-solid: var(--blue-300);
+
+  /* The same two-token split as light, one step lifted. The -mark tokens stay TradingView's
+     exact green and red: on the dark canvas they are what the reference actually looks like, and
+     they clear AA-large comfortably under a 1.5px stroke. The text tokens are lifted because a
+     13px cell on a #1e222d card is the binding case, not the stroke. */
+  --data-pos: #2dbd96;
+  --data-neg: #ff6b6b;
+  --data-pos-mark: #089981;
+  --data-neg-mark: #f23645;
+  --data-neutral: var(--ink-400);
+  --data-grid: var(--ink-700);
+  --data-axis: #363a45;
+
+  --chart-crosshair: var(--ink-400);
+  --chart-area-top: color-mix(in srgb, var(--data-pos-mark) 34%, transparent);
+  --chart-area-bottom: color-mix(in srgb, var(--data-pos-mark) 0%, transparent);
+  --chart-area-top-neg: color-mix(in srgb, var(--data-neg-mark) 34%, transparent);
+  --chart-area-bottom-neg: color-mix(in srgb, var(--data-neg-mark) 0%, transparent);
+  --chart-baseline: var(--amber-500);
+
+  /* Cluster identity lightened for the dark canvas; hue order preserved so a series keeps its
+     identity across a theme switch. */
+  --cluster-1: #7fa9d4;
+  --cluster-2: #e09a72;
+  --cluster-3: #85bfa0;
+  --cluster-4: #b39bd8;
+  --cluster-5: #ddba6e;
+  --cluster-6: #de8ca9;
+  --cluster-7: #7fcbd2;
+  --cluster-8: #b0be80;
+  --cluster-9: #c99183;
+  --cluster-10: #949fe0;
+  --cluster-11: #8ab4c4;
+  --cluster-12: #c9a0c9;
+}
+
+/* --- 4. Spacing — 4px base grid ------------------------------------------- */
+
+:root {
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --space-6: 20px;
+  --space-7: 24px;
+  --space-8: 32px;
+  --space-9: 40px;
+  --space-10: 48px;
+  --space-11: 64px;
+  --space-12: 80px;
+
+  /* Semantic aliases */
+  --pad-card: var(--space-7);
+  --pad-card-cozy: var(--space-5);
+  --gap-inline: var(--space-3);
+  --gap-stack: var(--space-4);
+  --gap-section: var(--space-8);
+
+  /* Layout */
+  --layout-max: 1280px;
+  --layout-gutter: var(--space-7);
+}
+
+/* --- 5. Radius — restrained ------------------------------------------------ */
+
+:root {
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-pill: 999px;
+
+  --radius-control: var(--radius-sm);
+  --radius-card: var(--radius-md);
+  --radius-badge: var(--radius-pill);
+}
+
+/* --- 6. Elevation ---------------------------------------------------------- */
+
+:root {
+  --shadow-xs: 0 1px 2px rgba(11, 15, 20, 0.06);
+  --shadow-sm: 0 1px 3px rgba(11, 15, 20, 0.10), 0 1px 2px rgba(11, 15, 20, 0.06);
+  --shadow-md: 0 4px 6px rgba(11, 15, 20, 0.07), 0 2px 4px rgba(11, 15, 20, 0.05);
+  --shadow-lg: 0 10px 15px rgba(11, 15, 20, 0.10), 0 4px 6px rgba(11, 15, 20, 0.05);
+  --ring: 0 0 0 3px var(--focus-ring);
+}
+
+[data-theme="dark"] {
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.30);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.40), 0 1px 2px rgba(0, 0, 0, 0.30);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.40), 0 2px 4px rgba(0, 0, 0, 0.30);
+  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.45), 0 4px 6px rgba(0, 0, 0, 0.30);
+}
+
+/* --- 7. Typography roles --------------------------------------------------- */
+
+:root {
+  /* Use as: font: var(--type-body);  letter-spacing: var(--tracking-label);
+
+     ONLY 400 AND 500 APPEAR BELOW. Roboto is loaded at those two weights and no others (see §1
+     and layout.tsx), so a role asking for 600 would be synthesised rather than rendered. The
+     hierarchy is therefore carried by SIZE and COLOUR rather than by weight — which is how
+     TradingView's own UI reads, and why its dense tables stay legible: a board where half the
+     figures are bold has no emphasis left to spend. */
+  --type-display: 500 30px/1.2 var(--font-sans);
+  --type-title: 500 22px/1.3 var(--font-sans);
+  --type-heading: 500 17px/1.4 var(--font-sans);
+  --type-subhead: 500 15px/1.4 var(--font-sans);
+  --type-body: 400 14px/1.5 var(--font-sans);
+  --type-body-strong: 500 14px/1.5 var(--font-sans);
+  --type-label: 500 12px/1.4 var(--font-sans);
+  --type-caption: 400 12px/1.4 var(--font-sans);
+  --type-micro: 400 11px/1.4 var(--font-sans);
+  --type-data-lg: 400 26px/1.15 var(--font-mono);
+  --type-data: 400 13px/1.4 var(--font-mono);
+  --type-data-strong: 500 13px/1.4 var(--font-mono);
+  --type-data-sm: 400 11px/1.4 var(--font-mono);
+  --type-prose: 400 15px/1.7 var(--font-sans);
+  --type-prose-lead: 400 17px/1.6 var(--font-sans);
+
+  --tracking-label: 0.06em;
+  --tracking-data: 0.01em;
+  /* Roboto's default figures are proportional; a price column that shifts by a pixel as digits
+     change is the single most visible way a board reads as amateur. Applied by .numeric and by
+     every mono role. */
+  --num-tabular: tabular-nums;
+}
+
+/* --- 8. Motion ------------------------------------------------------------- */
+
+:root {
+  --duration-fast: 100ms;
+  --duration-normal: 200ms;
+  --duration-slow: 350ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* --- 9. Reset + base ------------------------------------------------------- */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  color-scheme: light dark;
+  font-size: 16px;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: var(--fw-regular);
+  line-height: 1.5;
+  color: var(--text-1);
+  background: var(--canvas);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: var(--text-link);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* --- 10. App shell --------------------------------------------------------- */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--canvas);
+}
+
+/* --- 11. Header — brand row + tab bar -------------------------------------- */
+
+/* Both rows scroll away and stick together: the tab bar is the only thing naming the current
+   screen now that the page title moved into the content well, so it cannot be allowed to leave. */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.app-header__top,
+.tabbar {
+  max-width: var(--layout-max);
+  margin-inline: auto;
+  width: 100%;
+  padding-inline: var(--layout-gutter);
+}
+
+.app-header__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+  padding-block: var(--space-4);
+}
+
+.app-header__brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.app-header__wordmark {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-1);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.app-header__eyebrow {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-4);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-header__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.tabbar {
+  display: flex;
+  gap: var(--space-2);
+  /* Four Vietnamese labels plus padding overflow a phone. Scrolling keeps them on one row and
+     keeps the row height constant; wrapping would move the content down by a line at exactly the
+     width where vertical space is scarcest. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabbar::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 2px solid transparent;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: var(--fw-regular);
+  color: var(--text-3);
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.tab:hover {
+  color: var(--text-1);
+  border-bottom-color: var(--border-default);
+  text-decoration: none;
+}
+
+/* Underline, not a filled pill: four filled pills in a row read as four buttons, and the one
+   that is filled reads as the one you are about to press rather than the one you are on. */
+.tab--active,
+.tab--active:hover {
+  color: var(--accent-text);
+  font-weight: var(--fw-semibold);
+  border-bottom-color: var(--accent);
+}
+
+/* --- 12. Content well ------------------------------------------------------ */
+
+.content-well {
+  flex: 1;
+  padding: var(--layout-gutter);
+  max-width: var(--layout-max);
+  margin-inline: auto;
+  width: 100%;
+}
+
+.page-heading {
+  font-family: var(--font-sans);
+  font-size: 22px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-1);
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+  margin-bottom: var(--space-6);
+}
+
+/* --- 13. Theme toggle ------------------------------------------------------ */
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-control);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-3);
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.theme-toggle:hover {
+  background: var(--surface-hover);
+  color: var(--text-1);
+  border-color: var(--border-default);
+}
+
+.theme-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* --- 14. Card base --------------------------------------------------------- */
+
+.ds-card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  padding: var(--pad-card);
+}
+
+.ds-card--sunken {
+  background: var(--surface-sunken);
+  border-color: var(--border-subtle);
+}
+
+/* --- 15. Status notices ---------------------------------------------------- */
+
+/* The `.status-card*` and `.status-badge*` rules that used to open this section were deleted in
+   P10 along with `HealthStatus.tsx`, the component they styled — it had been exported but
+   imported by nothing since P8. A backend health card has no place on a results dashboard, and
+   P9 already dropped the one screen that would have hosted it. */
+
+.status-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: var(--space-4);
+  border: 1px solid transparent;
+}
+
+.status-notice--mock {
+  background: var(--status-ungrouped-bg);
+  color: var(--status-ungrouped-fg);
+  border-color: var(--status-ungrouped-border);
+}
+
+.status-notice--error {
+  background: var(--status-weak-bg);
+  color: var(--status-weak-fg);
+  border-color: var(--status-weak-border);
+}
+
+.status-notice__label {
+  font-weight: var(--fw-semibold);
+  flex-shrink: 0;
+}
+
+.status-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-sm);
+}
+
+/* --- 16. Skeleton loader ---------------------------------------------------- */
+
+.skeleton {
+  background: var(--surface-hover);
+  border-radius: var(--radius-sm);
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.skeleton-row {
+  height: 36px;
+}
+
+/* --- 17. Loading spinner --------------------------------------------------- */
+
+.spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* --- 18. Placeholder page content ------------------------------------------ */
+
+.placeholder-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  max-width: 720px;
+}
+
+.placeholder-card {
+  background: var(--surface-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  padding: var(--pad-card);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 120px;
+  justify-content: center;
+}
+
+.placeholder-card__title {
+  font-family: var(--font-sans);
+  font-size: 15px;
+  font-weight: var(--fw-semibold);
+  color: var(--text-2);
+}
+
+.placeholder-card__desc {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--text-4);
+  line-height: 1.5;
+}
+
+.content-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-5);
+}
+
+/* --- 19. Responsive -------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .content-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* The header was already a horizontal bar at every width after P11, so narrow viewports only need
+   the gutter tightened and the eyebrow dropped — it is a subtitle, and the wordmark beside it
+   says the same thing in fewer characters. */
+@media (max-width: 640px) {
+  :root {
+    --layout-gutter: var(--space-5);
+  }
+
+  .app-header__eyebrow {
+    display: none;
+  }
+
+  .page-heading {
+    font-size: 19px;
+  }
+}
+
+/* =============================================================================
+   Sections 20-24 removed in P10.
+   ~2,830 lines styling the Leiden-era screens -- overview, clusters,
+   cluster-detail, universe and ticker-detail -- which P8 archived to
+   _archive/p8-leiden-screens/. The rules outlived their markup by two phases and
+   were downloaded by every visitor on every page load. P8 recorded the debt and
+   assigned it here.
+
+   Verified unused before deleting: no class defined below the old line 760 was
+   referenced by any className in apps/web/src, as a literal or in a template
+   literal.
+
+   What remains above is the shell -- tokens, reset, app shell, header and tab bar,
+   status notices, skeletons -- which is still live. Screen-level styling now
+   lives in CSS Modules (components/ui.module.css and its neighbours), the
+   convention P8 chose going forward.
+   ============================================================================= */
