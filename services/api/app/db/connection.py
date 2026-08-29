@@ -37,6 +37,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+import time
 from collections import deque
 from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager
@@ -101,6 +102,53 @@ _POOL = None
 # connection to a pool that never issued it raised into the `finally` that swallowed it. Uvicorn
 # runs sync endpoints in a threadpool, so this is reachable on every cold start.
 _POOL_LOCK = threading.Lock()
+
+# P15/C2: a small in-process TTL cache in front of every read. The data this API serves changes
+# at most once a day (the pipeline runs on a schedule, never mid-request — see app.main's module
+# docstring), so a 60-second staleness window is invisible to the one person who reads it, and it
+# turns "flip back to a screen already open this minute" from a round trip to Singapore into a
+# dict lookup. Keyed on (kind, sql, params) so fetch_all and fetch_one never collide even if a
+# route somehow reused one SQL string for both.
+#
+# Sized for a single viewer, not a cache that must survive a restart or serve concurrent load:
+# unbounded, no eviction beyond TTL expiry, no cross-process sharing. Cardinality in practice is
+# bounded by the number of distinct (route, params) combinations one person actually opens, which
+# is small and does not grow with time.
+_CACHE_TTL_SECONDS = 60
+_CACHE_LOCK = threading.Lock()
+_CACHE: dict[tuple[str, str, tuple[Any, ...]], tuple[float, Any]] = {}
+
+
+def _cache_key(
+    kind: str, sql: str, params: Sequence[Any] | None,
+) -> tuple[str, str, tuple[Any, ...]]:
+    return (kind, sql, tuple(params or ()))
+
+
+def _cache_get(key: tuple[str, str, tuple[Any, ...]]) -> tuple[bool, Any]:
+    """``(True, value)`` on a live hit, ``(False, None)`` on a miss or an expired entry."""
+    with _CACHE_LOCK:
+        entry = _CACHE.get(key)
+        if entry is None:
+            return False, None
+        expires_at, value = entry
+        if expires_at < time.monotonic():
+            del _CACHE[key]
+            return False, None
+        return True, value
+
+
+def _cache_put(key: tuple[str, str, tuple[Any, ...]], value: Any) -> None:
+    with _CACHE_LOCK:
+        _CACHE[key] = (time.monotonic() + _CACHE_TTL_SECONDS, value)
+
+
+def _cache_clear() -> None:
+    """Drop every cached result. Wired to :func:`close_pool` — see its docstring for why that is
+    the right reset boundary rather than a standalone lifecycle of its own.
+    """
+    with _CACHE_LOCK:
+        _CACHE.clear()
 
 
 class PoolError(Exception):
@@ -281,10 +329,17 @@ def close_pool() -> None:
     Wired to the application's shutdown (``app.main``) so a terminating process hands its
     connections back instead of leaving the pooler to time them out. Never called at startup —
     the pool does not exist until the first query.
+
+    Also clears the query result cache (:data:`_CACHE`). A process that is losing its
+    connections is not a process whose cached answers should outlive them — and in production
+    this only runs at shutdown anyway, so it costs nothing there. Test suites call this in
+    ``setUp``/``tearDown`` specifically to isolate the pool between tests, and get isolated
+    caching for free as the same reset boundary.
     """
     global _POOL
     with _POOL_LOCK:
         pool, _POOL = _POOL, None
+    _cache_clear()
     if pool is None:
         return
     try:
@@ -468,18 +523,41 @@ def _execute(
 
 
 def fetch_all(sql: str, params: Sequence[Any] | None = None) -> list[dict[str, Any]]:
-    """Run a read query and return all rows as dicts (empty list if none)."""
-    return _execute(sql, params, lambda cur: [dict(r) for r in cur.fetchall()])
+    """Run a read query and return all rows as dicts (empty list if none).
+
+    Served from the 60-second cache (:data:`_CACHE`) when a live entry exists. A miss executes
+    the query and populates it; a raised exception is never cached. Returns a fresh copy of the
+    cached list on a hit, so a caller mutating its result (route code does this exactly once —
+    ``tickers.py``'s not-found fallback) can never corrupt what the next hit sees.
+    """
+    key = _cache_key("all", sql, params)
+    hit, cached = _cache_get(key)
+    if hit:
+        return list(cached)
+    rows = _execute(sql, params, lambda cur: [dict(r) for r in cur.fetchall()])
+    _cache_put(key, rows)
+    return list(rows)
 
 
 def fetch_one(sql: str, params: Sequence[Any] | None = None) -> dict[str, Any] | None:
-    """Run a read query and return the first row as a dict, or None."""
+    """Run a read query and return the first row as a dict, or None.
+
+    Cached the same way as :func:`fetch_all` — see its docstring. A ``None`` result (no row) is
+    cached too: a query that legitimately found nothing should not re-hit the database every
+    request for the next 60 seconds either.
+    """
+    key = _cache_key("one", sql, params)
+    hit, cached = _cache_get(key)
+    if hit:
+        return dict(cached) if cached is not None else None
 
     def first(cur: Any) -> dict[str, Any] | None:
         row = cur.fetchone()
         return dict(row) if row else None
 
-    return _execute(sql, params, first)
+    row = _execute(sql, params, first)
+    _cache_put(key, row)
+    return dict(row) if row is not None else None
 
 
 # ---------------------------------------------------------------------------

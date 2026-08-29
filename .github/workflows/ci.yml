@@ -15,8 +15,8 @@
 #
 # WHAT IS NOT HERE, and why
 # -------------------------
-# * No deploy step. Render and Netlify each build from their own push trigger; adding a third
-#   deployer here would give the repository two truths about how it ships.
+# * No deploy step. Render's Blueprint builds both services from their own push trigger; adding
+#   a deployer here would give the repository two truths about how it ships.
 # * No database. Every check below runs offline — each command was run with DATABASE_URL unset
 #   before it was written down. A CI job that needs Supabase credentials is a CI job that stops
 #   working the first time a key rotates.

@@ -30,9 +30,14 @@
 -- between the published k=10 and the unpublished tail out to k_max=15 that the
 -- greedy algorithm still selected and still recorded a marginal gain for.
 -- group_size/f_j/rho2_mean/rho2_min/sector_composition are NULL past step_k=k,
--- because model_groups is populated only for the published anchors (00005) --
--- the same NULL-is-the-truth rule v_active_group_health already follows for its
--- monitor half.
+-- because model_groups is populated only for the published anchors (00005).
+--
+-- That is a NULL which MEANS something: this anchor was selected but not
+-- published, so it has no group. It is worth separating from the kind P15 took
+-- out of v_active_group_health, which cited this one as its precedent. There,
+-- seven columns were NULL on every row forever because the table behind them had
+-- no writer at all. A NULL that reports a real boundary earns its column; a NULL
+-- that reports "this was never built" does not.
 -- -----------------------------------------------------------------------------
 CREATE VIEW v_active_anchors AS
 SELECT

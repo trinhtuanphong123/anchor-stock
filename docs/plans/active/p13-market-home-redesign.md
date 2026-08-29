@@ -136,6 +136,10 @@ routine step and it is not one. Switching `upsert.py` to `execute_batch` / `exec
 fix it for every dataset at once and is the obvious follow-up; it is **out of P13's scope** and is
 recorded here rather than done quietly as part of a UI change.
 
+**Closed, P15/B1 (2026-08-30).** `pipelines/common/upsert.py`'s six `upsert_*` functions now
+submit through `psycopg2.extras.execute_values` (`page_size=500`) instead of `executemany`.
+`docs/RUNBOOK.md` §3.5 no longer carries the routine-step warning this paragraph flagged.
+
 ---
 
 ## Validation

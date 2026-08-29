@@ -44,7 +44,8 @@ commit.
 | D-27 | `research.residuals` recomputes E; not stored on the artifact | Decided | [D-27](D-27-residuals-recomputed-not-stored.md) |
 | D-28 | Public repo carries the system, not the study | **Superseded by D-29** | [D-28](D-28-repository-carries-the-system-not-the-study.md) |
 | D-29 | Private repo carries the system **and** its documents | Decided | [D-29](D-29-private-repository-carries-system-and-documents.md) |
-| D-30 | API on Render, dashboard on Netlify | Decided in shape; **provider justification OPEN** | [D-30](D-30-hosting-split-across-two-providers.md) |
+| D-30 | API on Render, dashboard on Netlify | **Superseded by D-31** (provider reverted to Render; its own reasoning — and D-21's before it — is retained) | [D-30](D-30-hosting-split-across-two-providers.md) |
+| D-31 | Back to one provider (Render); returns become views; 8 tables dropped; indicators to `double precision`; baseline migrations edited in place | Decided | [D-31](D-31-single-provider-and-derived-storage.md) |
 
 D-28 had a record on disk and **no row in this table** until D-29 was written. The register
 understated what had been settled, which is the same failure its own opening paragraph warns

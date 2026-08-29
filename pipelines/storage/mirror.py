@@ -28,18 +28,24 @@ from pipelines.storage.ports import BarSink, BarSource, Dataset
 
 __all__ = ["MIRRORED", "MirrorDatasetReport", "mirror_all", "mirror_dataset"]
 
-#: The typed datasets landed in Postgres — four from P6, plus ``technical_indicators_daily``
-#: from P7. Order matches the parent plan's FK note: bars before the returns derived from them,
-#: though only ``stocks`` (populated by ``pipelines.universe.sync``, P6.3) is actually
-#: load-bearing for the FK on this list — ``daily_bars.ticker``, ``daily_returns.ticker`` and
-#: ``technical_indicators_daily.ticker`` all ``REFERENCES stocks``;
-#: ``market_index_bars``/``index_returns`` carry no such FK.
+#: The typed datasets landed in Postgres — two from P6, plus ``technical_indicators_daily``
+#: from P7. Order matches the parent plan's FK note: bars before the indicators derived from
+#: them, though only ``stocks`` (populated by ``pipelines.universe.sync``, P6.3) is actually
+#: load-bearing for the FK on this list — ``daily_bars.ticker`` and
+#: ``technical_indicators_daily.ticker`` both ``REFERENCES stocks``; ``market_index_bars``
+#: carries no such FK.
 #:
 #: Indicators come last because they are derived from ``daily_bars``: mirroring them after the
 #: bars they were computed from keeps the FK order and the causal order the same.
+#:
+#: ``DAILY_RETURNS`` / ``INDEX_RETURNS`` were here through P14 and are gone as of P15
+#: (supabase/migrations/00003_returns.sql): both are now VIEWs over ``daily_bars`` /
+#: ``market_index_bars``, so there is nothing for the Postgres mirror to submit — mirroring a
+#: view's own source data INTO it would be a no-op at best and a conflict at worst. The local
+#: track still writes them (research archive); this asymmetry is the same shape D-14 already
+#: established for ``staging.ohlc_raw`` — local writes it, the Postgres track does not.
 MIRRORED: tuple[Dataset, ...] = (
-    Dataset.DAILY_BARS, Dataset.INDEX_BARS, Dataset.DAILY_RETURNS, Dataset.INDEX_RETURNS,
-    Dataset.INDICATORS_DAILY,
+    Dataset.DAILY_BARS, Dataset.INDEX_BARS, Dataset.INDICATORS_DAILY,
 )
 
 #: Dataset -> the BarSink write method that accepts its records, keyed by name so this module
@@ -47,8 +53,6 @@ MIRRORED: tuple[Dataset, ...] = (
 _SINK_METHOD: dict[Dataset, str] = {
     Dataset.DAILY_BARS: "write_daily_bars",
     Dataset.INDEX_BARS: "write_index_bars",
-    Dataset.DAILY_RETURNS: "write_daily_returns",
-    Dataset.INDEX_RETURNS: "write_index_returns",
     Dataset.INDICATORS_DAILY: "write_indicators",
 }
 
@@ -146,9 +150,7 @@ class _FakeSource:
 class _FakeSink:
     def __init__(self) -> None:
         self.written: dict[str, list[dict[str, Any]]] = {
-            "write_daily_bars": [], "write_index_bars": [],
-            "write_daily_returns": [], "write_index_returns": [],
-            "write_indicators": [],
+            "write_daily_bars": [], "write_index_bars": [], "write_indicators": [],
         }
 
     def _record(self, method: str, records: list[dict[str, Any]]) -> int:
@@ -165,10 +167,10 @@ class _FakeSink:
         return self._record("write_index_bars", records)
 
     def write_daily_returns(self, records):  # noqa: ANN001, D102
-        return self._record("write_daily_returns", records)
+        raise AssertionError("mirror must never call write_daily_returns (P15: view, not table)")
 
     def write_index_returns(self, records):  # noqa: ANN001, D102
-        return self._record("write_index_returns", records)
+        raise AssertionError("mirror must never call write_index_returns (P15: view, not table)")
 
     def write_indicators(self, records):  # noqa: ANN001, D102
         return self._record("write_indicators", records)
@@ -195,9 +197,8 @@ def _selftest() -> int:
     table = {
         (Dataset.DAILY_BARS, "VCB"): [rec(i) for i in range(3)],
         (Dataset.DAILY_BARS, "EMPTY"): [],
-        (Dataset.DAILY_RETURNS, "VCB"): [rec(i) for i in range(12)],
+        (Dataset.DAILY_BARS, "BATCH"): [rec(i) for i in range(12)],
         (Dataset.INDEX_BARS, "VNINDEX"): [rec(i) for i in range(2)],
-        (Dataset.INDEX_RETURNS, "VNINDEX"): [rec(i) for i in range(2)],
         (Dataset.INDICATORS_DAILY, "VCB"): [rec(i) for i in range(4)],
     }
     src = _FakeSource(table)
@@ -223,12 +224,28 @@ def _selftest() -> int:
 
     def _batching() -> None:
         sink = _FakeSink()
-        r = mirror_dataset(Dataset.DAILY_RETURNS, ["VCB"], src=src, sink=sink, source="VCI",
+        r = mirror_dataset(Dataset.DAILY_BARS, ["BATCH"], src=src, sink=sink, source="VCI",
                             batch=5)
         _assert(r.records_read == 12 and r.records_submitted == 12, r)
-        _assert(len(sink.written["write_daily_returns"]) == 12, "batching lost records")
+        _assert(len(sink.written["write_daily_bars"]) == 12, "batching lost records")
 
     check("batch=5 over 12 records submits all 12 across 3 batches", _batching)
+
+    def _returns_never_mirrored() -> None:
+        sink = _FakeSink()
+        _assert(Dataset.DAILY_RETURNS not in MIRRORED and Dataset.INDEX_RETURNS not in MIRRORED,
+                "P15: daily_returns/index_returns are views now — must not be in MIRRORED")
+        _assert_raises(
+            lambda: sink.write_daily_returns([{"ticker": "VCB"}]),
+            AssertionError, "a caller that still points a Postgres sink at daily_returns",
+        )
+        _assert_raises(
+            lambda: sink.write_index_returns([{"index_symbol": "VNINDEX"}]),
+            AssertionError, "a caller that still points a Postgres sink at index_returns",
+        )
+
+    check("P15: DAILY_RETURNS/INDEX_RETURNS are out of MIRRORED and the sink refuses them",
+          _returns_never_mirrored)
 
     def _no_date_window() -> None:
         sink = _FakeSink()
@@ -255,11 +272,10 @@ def _selftest() -> int:
         by_dataset = {r.dataset: r for r in reports}
         _assert(by_dataset[Dataset.DAILY_BARS.value].records_read == 3, by_dataset)
         _assert(by_dataset[Dataset.INDEX_BARS.value].records_read == 2, by_dataset)
-        _assert(by_dataset[Dataset.DAILY_RETURNS.value].records_read == 12, by_dataset)
-        _assert(by_dataset[Dataset.INDEX_RETURNS.value].records_read == 2, by_dataset)
         _assert(by_dataset[Dataset.INDICATORS_DAILY.value].records_read == 4, by_dataset)
         _assert([r.dataset for r in reports] == [d.value for d in MIRRORED],
                 "reports must be in MIRRORED order")
+        _assert(len(reports) == 3, "P15: only 3 datasets are mirrored (returns are views)")
         _assert(len(sink.written["write_daily_bars"]) == 3, "daily_bars routed to tickers")
         _assert(len(sink.written["write_index_bars"]) == 2, "index_bars routed to index_symbols")
         _assert(len(sink.written["write_indicators"]) == 4, "indicators routed to tickers")
@@ -278,6 +294,14 @@ def _selftest() -> int:
 def _assert(cond: bool, what: object) -> None:
     if not cond:
         raise AssertionError(str(what))
+
+
+def _assert_raises(fn, exc_type: type[BaseException], what: str) -> None:
+    try:
+        fn()
+    except exc_type:
+        return
+    raise AssertionError(f"expected {exc_type.__name__} for {what}, nothing raised")
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -50,9 +50,13 @@
 -- return is legitimately negative, and NULL means "not computed" — which for
 -- ret_252d is every row whose ticker has fewer than 253 loaded sessions behind
 -- it. Existing rows get NULL and stay NULL until the indicator build reruns.
+--
+-- `double precision`, matching the columns it sits beside since P15 changed them
+-- from numeric. A `numeric` here would be the one decimal column in a float8
+-- table, which psycopg2 would hand back as a lone Decimal among floats.
 -- -----------------------------------------------------------------------------
 ALTER TABLE technical_indicators_daily
-    ADD COLUMN IF NOT EXISTS ret_252d numeric;
+    ADD COLUMN IF NOT EXISTS ret_252d double precision;
 
 COMMENT ON COLUMN technical_indicators_daily.ret_252d IS
     'Trailing simple return over 252 SESSIONS (not 365 days), as a fraction. NULL until the '

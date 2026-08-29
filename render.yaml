@@ -1,4 +1,4 @@
-# Render Blueprint — the half of the deployment Render owns.
+# Render Blueprint — both halves of the deployment, one provider, one file.
 #
 # Declared here rather than clicked together in Render's dashboard because configuration
 # assembled by hand is configuration nothing can reproduce. A thesis defence should be able to
@@ -6,45 +6,39 @@
 # deployment is without being given an account.
 #
 # THIS FILE CONTAINS NO SECRET, and must not. `DATABASE_URL` holds the Supabase `postgres`
-# password and is marked `sync: false`, which tells Render to prompt for it once and keep it in
-# the dashboard instead of reading it from here.
+# password and `ALLOWED_ORIGINS` names the other service's origin; both are marked `sync: false`,
+# which tells Render to prompt for them once and keep them in the dashboard instead of reading
+# them from here.
 #
-# ONE SERVICE, NOT TWO — the change from the public repository, and why
-# --------------------------------------------------------------------
-# The predecessor blueprint also declared the dashboard as a Render Static Site. The dashboard
-# is served from Netlify now, so that block would describe something nobody runs, and this file
-# states its own purpose as being rebuildable from the repository. A blueprint that rebuilds a
-# topology nobody runs fails at exactly the thing it exists for.
+# BACK TO ONE PROVIDER (P15) — what changed and why
+# --------------------------------------------------
+# D-30 split the dashboard onto Netlify; this file only ever declared the API. P15 reverses that:
+# both services are declared here again, on Render, in one file. See
+# docs/decisions/D-31-single-provider-and-derived-storage.md for the full reasoning — in short,
+# the two-provider split bought nothing this deployment used (no build-minute pressure, no
+# deploy-preview workflow) and cost a cross-reference that could only ever be closed by hand: the
+# site had to be BUILT with the API's URL and the API had to be CONFIGURED with the site's origin
+# before CORS would admit it, each a separate manual step after the other deployed.
 #
-# The reasoning that put the dashboard on a static host is UNCHANGED and is not being reversed:
-# a Web Service serving static files can spin down, so a visitor arriving cold would wait for
-# the HTML itself before any request to the API was even issued, whereas a static host is always
-# instant and only the data behind it can be slow. Netlify satisfies that as well as Render's
-# Static Site does. What changed is the provider, not the argument — see
-# docs/decisions/D-30-hosting-split-across-two-providers.md.
+# THAT LOOP IS MOSTLY GONE, not just moved. The static site's `routes` rewrite below proxies
+# `/api/*` to the API service, so the browser only ever calls its own origin — `apps/web` is built
+# with `NEXT_PUBLIC_API_BASE_URL=/`, a fixed value that names no service and therefore needs no
+# manual step after either deploy. `ALLOWED_ORIGINS` on the API is kept anyway, `sync: false`,
+# as the fallback for the one thing not yet verified against a real Render Static Site: whether
+# its rewrite can proxy to another Render service's *.onrender.com host, or only within its own
+# origin. If it can't, requests fall back to a real cross-origin call and CORS is what admits it.
 #
-# `netlify.toml`, at the repository root, is the other half. Each host declares only what it
-# owns, so neither file overstates its reach.
+# STATIC SITE, NOT A SECOND WEB SERVICE — D-21's argument, unchanged
+# -------------------------------------------------------------------
+# A Web Service serving static files can spin down, so a visitor arriving cold would wait for the
+# HTML itself before any request to the API was even issued. A Static Site is always instant and
+# only the data behind it can be slow. Nothing about that argument depended on the provider, so
+# moving the dashboard back to Render changes the provider, not the shape.
 #
-# The cross-reference that no file can close
-# ------------------------------------------
-# The two halves reference each other: the site must be BUILT with the API's URL (Next inlines
-# NEXT_PUBLIC_* at build time), and the API must be CONFIGURED with the site's origin before CORS
-# will admit it. Render's `fromService` could not close that loop even when both services lived
-# here — its supported properties are host, port, hostport, connectionString,
-# connectionPoolString, user, password and database, none of which yields an `https://…` origin
-# for a web or static service. Across two providers it is not even a candidate.
-#
-# So the first deploy is two passes, in this order:
-#
-#   1. Apply this blueprint. Supply DATABASE_URL when prompted. The API will FAIL TO START —
-#      that is correct and expected: `runtime_guards.resolve_runtime` refuses to boot in
-#      production with neither ALLOWED_ORIGINS nor ALLOWED_ORIGIN_REGEX, and the site's origin
-#      is not known yet.
-#   2. Note the Netlify site's origin, set it as ALLOWED_ORIGINS here, and redeploy the API.
-#   3. Note the API's URL, set it as NEXT_PUBLIC_API_BASE_URL on Netlify, and redeploy the SITE.
-#      A rebuild is mandatory — setting the variable without one changes nothing, because the
-#      value is baked into the JavaScript bundle at build time.
+# The other half of D-21's cold-start problem — the API itself sleeping on the free plan — is
+# fixed differently this time: `plan: starter` below buys *not sleeping*, not capacity. Measured
+# RSS on this service is 65-74 MB against a 512 MB limit on both plans; Starter was never about
+# running out of room.
 
 services:
   # ---------------------------------------------------------------------------
@@ -54,9 +48,14 @@ services:
   - type: web
     name: anchor-model-api
     runtime: python
-    plan: free
-    # Closest region to the Supabase project (aws-0-ap-southeast-2). Render offers no Sydney;
-    # Singapore is the nearest available and is also nearest to the intended readers.
+    # P15 decision #6: Starter, not free. The free plan's ~15-minute spin-down turns "open the
+    # link in front of a committee" into a minute of nothing — the single row Validation weighs
+    # heaviest (#13). $7/mo buys availability, not headroom the service doesn't need.
+    plan: starter
+    # Closest region to the Supabase project. As of P15 that project is Singapore
+    # (ap-southeast-1) too — see the migration note below — so this is no longer merely the
+    # nearest available region, it is the SAME region, and the extra network leg D-21 already
+    # accepted is gone.
     # Valid values: oregon (default), ohio, virginia, frankfurt, singapore.
     region: singapore
 
@@ -87,8 +86,11 @@ services:
         value: production
 
       # SECRET — set in the Render dashboard, never here.
-      # Use the Supabase SESSION POOLER host on port 5432. Two constraints, both easy to get
-      # wrong and both silent when wrong:
+      #
+      # P15: points at Supabase project qhbfjgheeyckefcwtmcq (ap-southeast-1, Singapore) — the
+      # project that was empty at the start of P15 and is now this deployment's target, replacing
+      # dxklhenmyzdzitgnmuwc (ap-southeast-2, Sydney). Use the Supabase SESSION POOLER host on
+      # port 5432. Two constraints, both easy to get wrong and both silent when wrong:
       #   * the direct db.<ref>.supabase.co endpoint is IPv6-only and Render's egress cannot be
       #     assumed to be, so the pooler is required;
       #   * the TRANSACTION pooler (6543) puts the API's only connection-layer write barrier —
@@ -118,30 +120,51 @@ services:
       - key: DATABASE_URL
         sync: false
 
-      # The Netlify site's production origin, e.g. https://anchor-model-web.netlify.app —
-      # comma-separated if more than one. Filled in at step 2 above.
-      #
-      # The API will not boot while BOTH this and ALLOWED_ORIGIN_REGEX are empty; either one
-      # alone satisfies the production guard, because a deployment that serves only preview
-      # builds has no fixed origin to list.
+      # Fallback only (P15/D2) — the browser's normal path to the API is the static site's
+      # same-origin rewrite below, which needs no CORS admission at all. This exists for the case
+      # that rewrite does not do (Validation #11 is where that gets proved or disproved): the
+      # site's own origin, e.g. https://anchor-model-web.onrender.com, comma-separated if more
+      # than one. The API will not boot while BOTH this and ALLOWED_ORIGIN_REGEX are empty.
       - key: ALLOWED_ORIGINS
         sync: false
 
-      # Optional. A regular expression admitting origins that cannot be enumerated because the
-      # host mints a new one per deploy — Netlify's deploy previews are
-      # `https://<hash>--<site>.netlify.app`, a different origin every build, which an
-      # exact-match list can never contain. Without this, every preview renders
-      # "api_not_configured" on every panel and reads as a broken deployment.
-      #
-      # Scope it to your own site. Starlette applies it with `fullmatch`, so it is anchored at
-      # both ends, and `runtime_guards.is_overbroad_origin_regex` refuses a pattern that admits
-      # arbitrary origins. What that guard CANNOT catch is a pattern broad within a shared
-      # domain: `https://.*\.netlify\.app` admits every site on netlify.app, including other
-      # people's. Name your site in the pattern:
-      #
-      #   https://[0-9a-z]+--anchor-model-web\.netlify\.app
-      #
-      # `sync: false` for the same reason as the two above: it references the other host, which
-      # this file cannot resolve.
+      # Optional and, as of P15, not expected to be needed — it existed for Netlify's
+      # per-deploy-preview origins (a different host on every build), and the Render Static Site
+      # this dashboard runs on now does not mint one. Left declared, `sync: false`, in case a
+      # future preview workflow needs it again; `runtime_guards.is_overbroad_origin_regex`
+      # refuses a pattern that admits arbitrary origins.
       - key: ALLOWED_ORIGIN_REGEX
         sync: false
+
+  # ---------------------------------------------------------------------------
+  # Dashboard — Next.js static export. Client-rendered throughout (D-13), so nothing here needs
+  # a Node server at runtime; only the build itself does.
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: anchor-model-web
+    runtime: static
+    rootDir: apps/web
+    buildCommand: npm ci && npm run build
+    staticPublishPath: out
+
+    routes:
+      # Same-origin proxy (P15/D2): the browser calls its own origin, Render forwards to the API
+      # service, and the two-provider cross-reference D-21/D-30 needed by hand is gone with it —
+      # this file is the only place either service's URL has to be written down. NOT YET VERIFIED
+      # against a real Render Static Site (Known risks in the P15 plan); Validation #11 is where
+      # that gets checked, with ALLOWED_ORIGINS above as the fallback if it does not hold.
+      - type: rewrite
+        source: /api/*
+        destination: https://anchor-model-api.onrender.com/api/*
+
+    envVars:
+      # Matches apps/web/.node-version and the CI job, so all three agree on one runtime.
+      - key: NODE_VERSION
+        value: "22"
+
+      # A fixed value, not the API's URL — apps/web/src/lib/api.ts's validateApiBaseUrl (P15/D2)
+      # treats a root-relative value as "same origin" and joinApiUrl resolves it to a bare path.
+      # This is what makes the value knowable before either service has been deployed once: it
+      # names no host, so there is nothing here for a first deploy to fail to know yet.
+      - key: NEXT_PUBLIC_API_BASE_URL
+        value: /

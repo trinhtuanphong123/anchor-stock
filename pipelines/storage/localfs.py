@@ -564,17 +564,23 @@ def _selftest() -> int:  # noqa: PLR0915 - a linear checklist reads better than 
         sink, src = LocalSink(), LocalSource()
 
         # 1 — the record contract matches the SQL it claims to mirror.
+        #
+        # P15/B1: execute_values moved the per-row ``%(name)s`` placeholders out of the INSERT
+        # statement (now a bare ``VALUES %s``) and into a separate mogrify template. Column
+        # order is asserted against the TEMPLATE; ON CONFLICT / EXCLUDED are still in the SQL.
         def _schema_vs_sql() -> None:
             sqls = {
-                Dataset.DAILY_BARS: U._DAILY_BARS_SQL,
-                Dataset.INDEX_BARS: U._MARKET_INDEX_BARS_SQL,
-                Dataset.RAW_EQUITY: U._OHLC_RAW_SQL,
-                Dataset.DAILY_RETURNS: U._DAILY_RETURNS_SQL,
-                Dataset.INDEX_RETURNS: U._INDEX_RETURNS_SQL,
-                Dataset.INDICATORS_DAILY: U._TECHNICAL_INDICATORS_SQL,
+                Dataset.DAILY_BARS: (U._DAILY_BARS_TEMPLATE, U._DAILY_BARS_SQL),
+                Dataset.INDEX_BARS: (U._MARKET_INDEX_BARS_TEMPLATE, U._MARKET_INDEX_BARS_SQL),
+                Dataset.RAW_EQUITY: (U._OHLC_RAW_TEMPLATE, U._OHLC_RAW_SQL),
+                Dataset.DAILY_RETURNS: (U._DAILY_RETURNS_TEMPLATE, U._DAILY_RETURNS_SQL),
+                Dataset.INDEX_RETURNS: (U._INDEX_RETURNS_TEMPLATE, U._INDEX_RETURNS_SQL),
+                Dataset.INDICATORS_DAILY: (
+                    U._TECHNICAL_INDICATORS_TEMPLATE, U._TECHNICAL_INDICATORS_SQL,
+                ),
             }
-            for ds, sql in sqls.items():
-                ph = tuple(dict.fromkeys(_re.findall(r"%\((\w+)\)s", sql)))
+            for ds, (template, sql) in sqls.items():
+                ph = tuple(dict.fromkeys(_re.findall(r"%\((\w+)\)s", template)))
                 assert ph == RECORD_KEYS[ds], f"{ds.value}: {ph} != {RECORD_KEYS[ds]}"
                 ck = tuple(
                     c.strip().strip('"')

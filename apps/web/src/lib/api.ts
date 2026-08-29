@@ -663,6 +663,14 @@ export function validateApiBaseUrl(value: string | null | undefined): ApiBaseVal
       message: "NEXT_PUBLIC_API_BASE_URL is not set.",
     };
   }
+  // P15/D2: render.yaml proxies /api/* to the API service (a same-origin rewrite), so the site
+  // no longer needs to know the API's own URL at build time. A root-relative value says exactly
+  // that -- normalize it to "" (same origin); joinApiUrl("", "/api/x") already yields "/api/x"
+  // with no base to prepend. This is still an explicit, validated configuration, distinct from
+  // an EMPTY value: the branch above still fails closed on "" (api_not_configured), unchanged.
+  if (trimmed.startsWith("/")) {
+    return { ok: true, baseUrl: "" };
+  }
   let parsed: URL;
   try {
     parsed = new URL(trimmed);

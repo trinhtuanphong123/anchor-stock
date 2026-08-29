@@ -291,9 +291,6 @@ class _RecordingCursor:
     def execute(self, sql: Any, params: Any = None) -> None:
         self.log.append((sql, params))
 
-    def executemany(self, sql: Any, records: Any) -> None:
-        self.log.append((sql, records))
-
     def fetchall(self) -> list[tuple]:
         return self.queue.pop(0) if self.queue else []
 
@@ -327,6 +324,19 @@ def _selftest() -> int:  # noqa: PLR0915 - a linear checklist
     real_cursor = db_mod.cursor
     db_mod.cursor = fake_cursor  # type: ignore[assignment]
 
+    # execute_values does its own mogrify/paginate/execute dance against a real psycopg2
+    # cursor's C-level parameter binding, which _RecordingCursor cannot emulate. The sink's
+    # actual promise — the same SQL object, the same record dicts, no copy or mutation — is
+    # checked one layer up instead, by recording the call to execute_values itself rather than
+    # its effect on a cursor.
+    real_execute_values = U.execute_values
+    ev_log: list[tuple[Any, Any, Any, Any]] = []
+
+    def fake_execute_values(cur, sql, records, template=None, page_size=100, fetch=False):  # noqa: ANN001, ARG001
+        ev_log.append((sql, records, template, page_size))
+
+    U.execute_values = fake_execute_values  # type: ignore[assignment]
+
     passed = 0
     failed: list[str] = []
 
@@ -359,8 +369,9 @@ def _selftest() -> int:  # noqa: PLR0915 - a linear checklist
 
         # The sink must hand the caller's dicts, unmodified, to the exact SQL object in
         # upsert.py — identity, not string equality, so a copied-and-edited constant fails.
+        # It must also page at 500 — the whole point of P15's B1.
         def _verbatim() -> None:
-            log.clear()
+            ev_log.clear()
             ts = datetime(2025, 1, 2, tzinfo=UTC)
             rec = {
                 "ticker": "VCB", "bar_date": date(2025, 1, 2), "source": "VCI",
@@ -369,19 +380,23 @@ def _selftest() -> int:  # noqa: PLR0915 - a linear checklist
             }
             n = sink.write_daily_bars([rec])
             _assert(n == 1, f"returned {n}")
-            sql, records = log[-1]
+            sql, records, template, page_size = ev_log[-1]
             _assert(sql is U._DAILY_BARS_SQL, "sink used SQL that is not upsert.py's constant")
+            _assert(template is U._DAILY_BARS_TEMPLATE,
+                    "sink used a template that is not upsert.py's constant")
             _assert(records[0] is rec, "sink copied or mutated the record dict")
+            _assert(page_size == 500, f"page_size={page_size}, expected 500")
 
-        check("sink delegates verbatim to upsert.py's own SQL object", _verbatim)
+        check("sink delegates verbatim to upsert.py's own SQL object, batched at 500", _verbatim)
 
         def _empty_noop() -> None:
             log.clear()
+            ev_log.clear()
             for fn in (sink.write_raw_bars, sink.write_daily_bars, sink.write_index_bars,
                        sink.write_daily_returns, sink.write_index_returns,
                        sink.write_indicators):
                 _assert(fn([]) == 0, f"{fn.__name__} on empty input")
-            _assert(not log, f"empty input still executed: {log}")
+            _assert(not log and not ev_log, f"empty input still executed: {log} {ev_log}")
 
         check("empty input is a no-op that opens nothing", _empty_noop)
 
@@ -499,6 +514,7 @@ def _selftest() -> int:  # noqa: PLR0915 - a linear checklist
 
     finally:
         db_mod.cursor = real_cursor  # type: ignore[assignment]
+        U.execute_values = real_execute_values  # type: ignore[assignment]
 
     print()
     if failed:

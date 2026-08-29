@@ -1,23 +1,4 @@
 # list_stocks.txt — the investable universe.
-#
-# Authoritative source for a fresh install. One ticker per line; blank lines and lines
-# starting with '#' are ignored; case-insensitive; duplicates are collapsed.
-#
-# LINE ORDER IS NOT MEANINGFUL. The reader sorts ascending before hashing, because the
-# greedy tie-break is "smallest index" and column order therefore has to be a property of
-# the content, not of how the file happened to be typed. Reordering these lines changes
-# nothing — editing the set of tickers changes the universe version.
-#
-# Starting set: 100 liquid HOSE tickers (VN30 plus the rest of the large/mid-cap band).
-# This is a starting point, not a curated selection — replace it wholesale when the real
-# liquidity screen exists.
-#
-# CAVEAT worth knowing before reading any result: several names here listed after 2021
-# (NAB, EVF, KOS, DXS, BAF among them). For a per-year run, a ticker with no sessions in
-# that year is dropped cleanly. A ticker that listed *mid-year* is the dangerous case — it
-# drags down the session count shared by the whole basket, because the return matrix keeps
-# only sessions where every ticker has a return (docs/01 §1: rectangular, no interpolation).
-# The alignment report names which tickers cost how many sessions. Read it.
 
 # --- VN30 ---
 ACB

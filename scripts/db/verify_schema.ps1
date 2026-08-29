@@ -5,10 +5,13 @@
     REQUIRED_TABLES list pipelines/common/db.py --check-schema-files scans for.
 
 .DESCRIPTION
-    Run after apply_migrations.ps1. Exits non-zero if any REQUIRED_TABLES entry is missing --
-    every other section is informational, printed for eyeball comparison against the P0
-    validation report's numbers (27 tables, 4 views, 27 PKs, 26 FKs, 65 CHECKs, 6 UNIQUEs,
-    63 indexes).
+    Run after apply_migrations.ps1. Exits non-zero if the final gate block returns any row --
+    a required relation missing, or a table P15 withdrew still present. Every other section is
+    informational, printed for eyeball comparison.
+
+    Reference counts are P15's, measured 2026-08-30 against a freshly migrated database:
+    17 base tables (16 public + 1 staging), 13 views, 17 PKs, 14 FKs, 46 CHECKs, 5 UNIQUEs,
+    44 indexes.
 #>
 
 $ErrorActionPreference = "Stop"
@@ -28,12 +31,14 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host $Output
 
-# The last \echo block lists missing required tables, one per row, under the header
-# "missing_table". psql prints "(0 rows)" when the set is empty; anything else is a failure.
+# The gate is the LAST result set in verify_schema.sql, and this reads it positionally: psql
+# prints "(0 rows)" for an empty set, so the whole output ending in "(0 rows)" means the gate
+# passed. A query appended after the gate in the .sql would take its place here silently, which
+# is why that file folds both of its checks into one block and says so.
 if ($Output -match "\(0 rows\)\s*$") {
-    Write-Host "`n== All REQUIRED_TABLES present. ==" -ForegroundColor Green
+    Write-Host "`n== Schema gate passed: required relations present, withdrawn tables absent. ==" -ForegroundColor Green
     exit 0
 } else {
-    Write-Host "`n== Some REQUIRED_TABLES are MISSING -- see 'missing_table' rows above. ==" -ForegroundColor Red
+    Write-Host "`n== Schema gate FAILED -- see the 'problem'/'relation' rows above. ==" -ForegroundColor Red
     exit 1
 }

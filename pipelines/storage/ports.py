@@ -107,8 +107,8 @@ class BarSink(Protocol):
       ignored. ``RECORD_KEYS`` states the required set per dataset.
     * Empty input is a no-op returning ``0``. No file is created, no transaction is opened.
     * The return value is the number of records **submitted**, not the number of rows that
-      changed. Postgres cannot distinguish an insert from an update under ``executemany``, so
-      this interface does not pretend to either.
+      changed. Postgres cannot distinguish an insert from an update under a bulk upsert
+      (``execute_values``), so this interface does not pretend to either.
     * Writes are **idempotent** on the dataset's conflict key. Re-submitting a record already
       present leaves the same end state as ``ON CONFLICT DO UPDATE`` — *including* the columns
       that clause declines to touch, which ``ON_CONFLICT_KEEP`` names. A blanket row-replace

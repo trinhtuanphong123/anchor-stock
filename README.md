@@ -21,7 +21,7 @@ specification is `docs/01`–`docs/04`; where code and spec disagree, the spec w
 |---|---|
 | `pipelines/` | Library of callable steps — ingestion, returns, factor model, greedy, artifacts |
 | `services/api/` | FastAPI read layer over Supabase. Deployed to Render (`render.yaml`) |
-| `apps/web/` | Next.js dashboard, statically exported. Deployed to Netlify (`netlify.toml`) |
+| `apps/web/` | Next.js dashboard, statically exported. Deployed to Render (`render.yaml`) |
 | `supabase/migrations/` | Schema baseline, `00001`–`00013` |
 | `docs/` | Specs, decision records, plans, runbook — tracked (D-29) |
 

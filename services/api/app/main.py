@@ -23,8 +23,9 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app.db.connection import close_pool
 from app.health import router as health_router
@@ -34,6 +35,25 @@ from app.routes.market import router as market_router
 from app.routes.model import router as model_router
 from app.routes.tickers import router as tickers_router
 from app.runtime_guards import RuntimeConfig
+
+#: P15/C2: the browser side of the 60-second server cache in app.db.connection. ``/api/*`` GET
+#: responses only — never ``/health``, which must always reflect live connectivity (Verification
+#: #9 curls it expecting a fresh answer), and never a non-200 (an error is not something to serve
+#: stale for a minute). Matches the server-side TTL exactly so the two never disagree about how
+#: fresh "fresh" is.
+_CACHE_CONTROL_PREFIX = "/api/"
+_CACHE_CONTROL_VALUE = "public, max-age=60"
+
+
+async def _add_cache_control(request: Request, call_next):  # noqa: ANN001, ANN201
+    response: Response = await call_next(request)
+    if (
+        request.method == "GET"
+        and request.url.path.startswith(_CACHE_CONTROL_PREFIX)
+        and response.status_code == 200
+    ):
+        response.headers["Cache-Control"] = _CACHE_CONTROL_VALUE
+    return response
 
 
 @asynccontextmanager
@@ -86,6 +106,15 @@ def create_app(runtime_config: RuntimeConfig | None = None) -> FastAPI:
         allow_methods=["GET"],
         allow_headers=["*"],
     )
+
+    # P15/C1: /api/tickers/{t}/indicators alone runs ~400 KB of JSON (~1,400 rows x 31 columns).
+    # Gzip cuts that to ~40 KB — the single change with the most impact on the VN->Singapore path
+    # a presentation runs over. Starlette's default minimum_size=500 already skips compressing
+    # tiny error envelopes, so nothing more to configure.
+    app.add_middleware(GZipMiddleware)
+
+    # P15/C2: browser-side half of the read-path cache; see _add_cache_control above.
+    app.middleware("http")(_add_cache_control)
 
     app.include_router(health_router)
     app.include_router(model_router)

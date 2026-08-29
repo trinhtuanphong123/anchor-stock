@@ -1,15 +1,20 @@
 # RUNBOOK — rebuilding the database from an empty one
 
-**Written:** 2026-08-29 (P12/F5). **Shape:** the one-shot refresh sequence P11 specifies in
-`plans/active/anchor-model-operations.md` §P11, replacing the Airflow DAGs that were dropped.
+**Written:** 2026-08-29 (P12/F5). **Revised:** 2026-08-30 (P15) — three things this file used to
+warn about are fixed rather than worked around: Supabase's schema is now applied through a real
+migration runner (§1), the returns build step is gone because `daily_returns`/`index_returns` are
+VIEWs (§3.4 removed), and the ten-hour write warning is gone because `pipelines/common/upsert.py`
+batches through `execute_values` instead of one round trip per row (§3.5). Table/view/index
+counts below are P15's; see `supabase/migrations/00003_returns.sql` and
+`scripts/db/verify_schema.sql` for the numbers and how they were measured.
 
 > **Read this line before running anything.** Every command below was checked to exist, with the
 > flags it is written with, by running `--help` against the module on 2026-08-29. The individual
 > steps have all been run before — that is how the current database was built, phase by phase
-> (P6.1–P6.5, P7). **What has never been run is this file, top to bottom, as one sequence against
-> a fresh empty database.** That check is `anchor-model-operations.md`'s P11 validation row and it
-> is still `not attempted`. Treat the ordering and the checks as specified-and-plausible, not as
-> rehearsed. Nothing here is reported as passing.
+> (P6.1–P6.5, P7, P15). **What has never been run is this file, top to bottom, as one sequence
+> against a fresh empty database.** That check is `anchor-model-operations.md`'s P11 validation
+> row and it is still `not attempted`. Treat the ordering and the checks as specified-and-plausible,
+> not as rehearsed. Nothing here is reported as passing.
 
 ---
 
@@ -23,20 +28,31 @@ It does **not** recompute the model. Artifacts under `data/artifacts/` are froze
 `docs/04` §5 forbids a request path reaching greedy. If you want a new artifact you are on the
 local train track, which is a different document.
 
-## 1 Two targets, and only one of them is scripted
+## 1 Two targets, both scripted
 
 | Target | Schema applied by | Idempotent? |
 |---|---|---|
 | Local container `datn_pg` | `scripts/db/apply_migrations.ps1` | No — re-running fails loudly on the first colliding `CREATE`, deliberately (no down-migrations) |
-| Supabase (what Render reads) | **by hand** | Unknown |
+| Supabase (what Render reads) | a migration runner, one file at a time, in order | No — same reason |
 
-**Stated plainly because it is the weakest link in reproducibility:** the Supabase project's
-schema is not tracked by any migration runner. `supabase_migrations.schema_migrations` is
-**empty** (checked 2026-08-29) while all 27 tables and 10 `v_*` views exist and hold data, so the
-SQL was applied directly rather than through the Supabase CLI. There is therefore no recorded,
-repeatable procedure for bringing a *new* Supabase project to this schema, and no runner that
-would refuse to double-apply. Rebuilding Supabase from scratch is **not** covered here, and
-pretending otherwise is what this file exists to avoid.
+**P15 closed the gap this section used to warn about.** Through P14, Supabase's schema was not
+tracked by any migration runner — `supabase_migrations.schema_migrations` was empty while every
+table and view existed and held data, meaning the SQL had been applied directly rather than
+recorded. That is fixed: `qhbfjgheeyckefcwtmcq` (Singapore, ap-southeast-1) was brought up from
+**empty** by applying every file in `supabase/migrations/` — `00001, 00002, 00003, 00004, 00005,
+00008, 00009, 00010, 00011, 00012, 00013`, in that order (`00006`/`00007` are withdrawn to
+`_archive/` and skipped; the gap in the numbering is deliberate, not a typo) — through a migration
+runner that writes one row to `schema_migrations` per file applied. **`schema_migrations` now
+holds 11 rows**, so the schema is a thing this repository can rebuild and verify against, not a
+state that only exists in one project's history.
+
+`00011` (revoke `anon`/`authenticated`) is not optional and must not be skipped or reordered
+before it: it is the only thing standing between the public `anon` key and `TRUNCATE daily_bars`
+(D-20).
+
+Rebuilding a *second* Supabase project from scratch means re-running the same 11 files, in the
+same order, through the same kind of runner — there is nothing target-specific about the sequence
+above besides which project's connection string receives it.
 
 Everything from §3 onward is storage-agnostic and works against either target — it is selected by
 `DATABASE_URL` and `DATN_STORAGE`, not by different commands.
@@ -74,10 +90,11 @@ Brings up `datn_pg` from `scripts/db/compose.db.yml` and applies `supabase/migra
 order under `ON_ERROR_STOP`, non-recursively so `_archive/` is never touched.
 
 **Check:** `verify_schema.ps1` exits non-zero if any required table is missing, executes every
-view rather than merely parsing it, and prints counts to compare against P0's numbers — 27 tables,
-27 PKs, 26 FKs, 65 CHECKs, 6 UNIQUEs, 63 indexes. The view count has since grown past P0's 4
-(`00010`, `00012` and `00013` add more); **11** `v_*` views is the current figure — `00013` adds
-`v_index_history` and recreates three others in place.
+view rather than merely parsing it, and prints counts to compare against P15's numbers — **17
+base tables** (16 public + 1 `staging`), **13 views**, **17 PKs, 14 FKs, 46 CHECKs, 5 UNIQUEs, 44
+indexes**. `scripts/db/verify_schema.sql` has the full derivation: P15 dropped 8 tables with no
+writer (`00006`/`00007`), turned `daily_returns`/`index_returns` from tables into views, and
+`v_active_group_health` lost seven columns along with the table it LEFT JOINed onto.
 
 > `00013` is the one migration in this set that is not purely additive: it **drops and recreates**
 > `v_latest_indicators`, `v_top_movers` and `v_anchor_group_detail`. `CREATE OR REPLACE VIEW` can
@@ -126,16 +143,19 @@ per-symbol outcome, and that file is the audit record of what actually arrived.
 returns `float`, never `Decimal` — the port contract says floats cross the seam. P6.2 recorded
 121,014 / 1,424 / 120,929 / 1,423 read == submitted, and `staging.ohlc_raw` empty.
 
-### 3.4 Returns
+### 3.4 [withdrawn, P15] Returns
 
-```powershell
-python -m pipelines.returns.build --mock          # synthetic, no DB
-python -m pipelines.returns.build --once
-```
+There is no longer a step here against Postgres. `daily_returns` / `index_returns` are **VIEWs**
+over `daily_bars` / `market_index_bars` as of `supabase/migrations/00003_returns.sql` — a pure
+function of §3.3's data, computed on read. This is what closes the exact gap this step used to
+guard against: P6.4 once fetched successfully but *missed* the returns rebuild, leaving a hole at
+the 2025/2026 boundary that only a boundary check caught. A view cannot fall behind the table it
+is derived from, so there is nothing left to run and nothing left to forget to run.
 
-**Check:** no gap at a year boundary. P6.4 hit exactly this — the fetch succeeded and the
-`daily_returns` rebuild was *missed*, leaving a hole at 2025/2026 that only a boundary check
-found. Run it after every fetch, not only after the first.
+`python -m pipelines.returns.build` still exists and still writes — but only against the **local**
+track (`DATN_STORAGE=local`), which remains the research archive. Pointing it at Postgres
+(`writer.write_daily_returns` / `write_index_returns` on a `PostgresSink`) raises: the target is a
+view with no `INSTEAD OF` rule, honestly, since there is nothing to insert into.
 
 ### 3.5 Indicators
 
@@ -150,14 +170,15 @@ than the warm-up and nowhere else. Warm-ups measure from the first **loaded** ba
 
 Indicators are display-only. They never enter the factor model or anchor selection (`docs/04` §5).
 
-> **`--storage pg` against Supabase is NOT a routine step, and this line is the correction.**
-> `pipelines/common/upsert.py` writes through psycopg2 `executemany`, which issues **one round
-> trip per row**. Measured on 2026-08-29 from Vietnam to `ap-southeast-2`: ~7 minutes per ticker
-> at 1,424 rows each, projecting to roughly **ten hours** for the 85-ticker universe. The two
-> practical routes are `--storage local` followed by `python -m pipelines.storage.mirror --run`,
-> or a targeted single-column write (see `docs/plans/active/p13-market-home-redesign.md`
-> §Backfill, which did exactly that in 42 seconds). Making `upsert.py` batch its writes would
-> retire this whole note and is the obvious fix; it has not been done.
+> **`--storage pg` against Supabase is a routine step again, as of P15/B1.**
+> `pipelines/common/upsert.py` used to write through psycopg2 `executemany` — one round trip per
+> row, measured at ~7 minutes per ticker and projecting to roughly ten hours for the 85-ticker
+> universe. It now submits through `psycopg2.extras.execute_values` (`page_size=500`, one round
+> trip per 500 rows), the same fix `docs/plans/active/p13-market-home-redesign.md` §Backfill
+> flagged as the obvious follow-up and left undone. `--storage local` followed by
+> `python -m pipelines.storage.mirror --run` is still the faster route when the data is already
+> on disk (§3.3a) — this note is no longer about avoiding a ten-hour wait, just about which path
+> re-reads from the provider and which does not.
 
 > **Adding an indicator column? Run BOTH selftests.** `pipelines.indicators.build --selftest`
 > checks the formulas; `pipelines.storage.localfs --selftest` checks that
@@ -251,12 +272,9 @@ close it.
 1. **This sequence has never been executed end to end against a fresh empty database.** The
    individual steps have; the chain has not. Until it is, "reproducible" is a claim about
    plausibility, not a measured property.
-2. **Supabase's schema is unmanaged** (§1). This is the gap that would bite hardest in a rebuild.
-3. **`psycopg2.extras.execute_batch` was never adopted.** `pipelines/common/upsert.py` submits
-   every batch with `executemany`, which its module docstring documents as the chosen mechanism.
-   It is *correct* — 121,014 indicator rows and 121,014 daily bars landed through it — but
-   `executemany` round-trips per row, and P11 estimated the difference as hours against minutes
-   once the pipeline runs over a network rather than a local container. Not done, not benchmarked
-   here, and recorded so it is not mistaken for an oversight.
-4. **No test runner for `pipelines/`.** Verification is the `--selftest` / `--mock` idiom on each
+2. **No test runner for `pipelines/`.** Verification is the `--selftest` / `--mock` idiom on each
    module, listed per step above. `services/api` and `apps/web` do have real runners (§3.8).
+
+Two gaps this list used to carry are closed as of P15: Supabase's schema is now applied through a
+migration runner and recorded in `schema_migrations` (§1), and `upsert.py` batches through
+`execute_values` instead of `executemany` (§3.5).

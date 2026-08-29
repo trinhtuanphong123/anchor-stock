@@ -84,9 +84,20 @@ def cursor() -> Generator:  # type: ignore[type-arg]
 # Path to migrations directory (relative to repo root)
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "supabase" / "migrations"
 
-# Required table names that must appear in at least one migration.
-# Grouped by the baseline migration that creates them. Superseded pre-anchor migrations live
+# Required relation names that must appear in at least one migration.
+# Grouped by the baseline migration that creates them. Superseded and withdrawn migrations live
 # in migrations/_archive/ and are deliberately NOT scanned — glob("*.sql") is non-recursive.
+#
+# "relation", not "table", since P15: `daily_returns` and `index_returns` are VIEWS over
+# `daily_bars`/`market_index_bars` rather than stored tables. The check below is a substring
+# search over the concatenated migration text, so it does not care which — but a reader of this
+# list would, and a list named for tables that contains two views is a list that misleads.
+#
+# 00006_research and 00007_live_monitors are ABSENT and that is the P15 decision, not an
+# oversight. Their eight tables held zero rows and nothing in this repository ever wrote to
+# them: the research track that would have (`pipelines/research/`) is not carried here at all.
+# The numbers 00006 and 00007 are left as a gap on purpose — renumbering the rest would rewrite
+# history to hide that something was withdrawn.
 REQUIRED_TABLES = [
     # 00001_reference
     "stocks",
@@ -97,7 +108,7 @@ REQUIRED_TABLES = [
     "ohlc_raw",
     "daily_bars",
     "market_index_bars",
-    # 00003_returns
+    # 00003_returns — views, not tables
     "daily_returns",
     "index_returns",
     # 00004_indicators
@@ -110,16 +121,6 @@ REQUIRED_TABLES = [
     "model_similarity_anchor",
     "model_similarity_full",
     "model_groups",
-    # 00006_research
-    "stability_studies",
-    "anchor_frequency",
-    "cross_year_eval",
-    "measure_comparison",
-    # 00007_live_monitors
-    "live_residuals",
-    "live_rolling_similarity",
-    "live_coverage_monitor",
-    "live_beta_drift",
     # 00008_operational
     "pipeline_runs",
     "data_quality_reports",

@@ -1,26 +1,4 @@
-# list_stocks_research.txt — the frozen research-track universe (D-12).
-#
-# 85 of the 100 tickers in list_stocks.txt: exactly the subset with a return on every
-# session of every research year 2021-2025 (VNINDEX's session calendar each year, checked
-# against data/processed as collected by P2, derived 2026-08-17). One ticker missing a
-# single session in a single year is enough to exclude it — that is what "frozen" means:
-# this file does not get re-derived per run, per year, or when more data arrives.
-#
-# Fifteen tickers in list_stocks.txt are absent here because they listed mid-window and
-# would otherwise drag every research year's T down to their own shortest one (docs/01 §1:
-# the return matrix keeps only sessions where every ticker in the set has a return):
-#   BAF, BSI, DXS, EVF, OCB, ORS, PAN, SHB, SSB, VIX, VND   (cost 2021)
-#   CTR, HHV                                                (cost 2022)
-#   SIP                                                      (cost 2023)
-#   NAB                                                      (cost 2024)
-#
-# They stay in list_stocks.txt — still collected, still served to the dashboard and the
-# live track. This file exists only so the five research-year runs (docs/03 §2) share one
-# N and one q, and the cross-year evaluation (docs/03 §4) compares the same set to itself
-# rather than to a universe that grew under it. See docs/decisions/D-12.
-#
-# Regenerate with: python -m pipelines.universe.file --derive-research-universe
-# Format is identical to list_stocks.txt: one ticker per line, order not meaningful.
+# list_stocks_research.txt — the frozen research-track universe 
 
 AAA
 ACB

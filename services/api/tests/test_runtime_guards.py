@@ -994,6 +994,93 @@ class DbAndImportSafetyTests(unittest.TestCase):
         self.assertEqual(connect.call_count, 2)
         self.assertTrue(dead.close.called, "a connection proved dead must not go back in the pool")
 
+    # -----------------------------------------------------------------------
+    # P15/C2 — the 60-second read-path cache in front of fetch_all/fetch_one.
+    # -----------------------------------------------------------------------
+
+    def test_cache_hit_within_ttl_skips_the_second_connect(self):
+        conn = _fake_conn()
+        _cursor_of(conn).fetchall.return_value = [{"ticker": "VCB"}]
+        with _db_url(), mock.patch("psycopg2.connect", return_value=conn) as connect:
+            first = connection.fetch_all("SELECT 1")
+            second = connection.fetch_all("SELECT 1")
+        self.assertEqual(first, [{"ticker": "VCB"}])
+        self.assertEqual(second, [{"ticker": "VCB"}])
+        self.assertEqual(connect.call_count, 1, "a cache hit must not open a second connection")
+
+    def test_cache_hit_returns_an_independent_copy(self):
+        # A caller mutating its own result (tickers.py's not-found fallback does something
+        # adjacent to this) must never be able to poison what the next hit sees.
+        conn = _fake_conn()
+        _cursor_of(conn).fetchall.return_value = [{"ticker": "VCB"}]
+        with _db_url(), mock.patch("psycopg2.connect", return_value=conn):
+            first = connection.fetch_all("SELECT 1")
+            first.append({"ticker": "POISONED"})
+            second = connection.fetch_all("SELECT 1")
+        self.assertEqual(second, [{"ticker": "VCB"}])
+
+    def test_cache_entry_expires_after_its_ttl(self):
+        # A pooled connection is reused across calls (that is the whole point of the pool), so
+        # `psycopg2.connect` call_count can't tell a cache hit from a cheap pool checkout —
+        # `execute` call_count can, since only an actual query issues a new `execute`.
+        conn = _fake_conn()
+        _cursor_of(conn).fetchall.return_value = [{"ticker": "VCB"}]
+        with _db_url(), mock.patch("psycopg2.connect", return_value=conn):
+            connection.fetch_all("SELECT 1")
+            later = time.monotonic() + connection._CACHE_TTL_SECONDS + 1
+            with mock.patch("time.monotonic", return_value=later):
+                connection.fetch_all("SELECT 1")
+        self.assertEqual(_cursor_of(conn).execute.call_count, 2,
+                          "an expired entry must be re-queried, not served")
+
+    def test_different_params_are_different_cache_entries(self):
+        conn = _fake_conn()
+        _cursor_of(conn).fetchall.side_effect = [[{"ticker": "A"}], [{"ticker": "B"}]]
+        with _db_url(), mock.patch("psycopg2.connect", return_value=conn):
+            a = connection.fetch_all("SELECT * FROM t WHERE ticker = %s", ("A",))
+            b = connection.fetch_all("SELECT * FROM t WHERE ticker = %s", ("B",))
+        self.assertEqual(a, [{"ticker": "A"}])
+        self.assertEqual(b, [{"ticker": "B"}])
+        self.assertEqual(_cursor_of(conn).execute.call_count, 2,
+                          "different params must not share a cache entry")
+
+    def test_fetch_one_none_result_is_cached_too(self):
+        conn = _fake_conn()
+        _cursor_of(conn).fetchone.return_value = None
+        with _db_url(), mock.patch("psycopg2.connect", return_value=conn) as connect:
+            first = connection.fetch_one("SELECT 1")
+            second = connection.fetch_one("SELECT 1")
+        self.assertIsNone(first)
+        self.assertIsNone(second)
+        self.assertEqual(connect.call_count, 1, "a legitimate 'no row' answer is cacheable too")
+
+    def test_a_failed_fetch_is_never_cached(self):
+        import psycopg2  # noqa: PLC0415
+
+        first, second = _fake_conn(), _fake_conn()
+        for c in (first, second):
+            _cursor_of(c).execute.side_effect = psycopg2.OperationalError("server closed")
+        with _db_url(), mock.patch("psycopg2.connect", side_effect=[first, second]):
+            with self.assertRaises(connection.DatabaseUnavailable):
+                connection.fetch_all("SELECT 1")
+
+        ok = _fake_conn()
+        _cursor_of(ok).fetchall.return_value = [{"ticker": "VCB"}]
+        with _db_url(), mock.patch("psycopg2.connect", return_value=ok):
+            rows = connection.fetch_all("SELECT 1")
+        self.assertEqual(rows, [{"ticker": "VCB"}],
+                          "a DatabaseUnavailable must not poison the cache")
+
+    def test_close_pool_clears_the_cache(self):
+        conn = _fake_conn()
+        _cursor_of(conn).fetchall.return_value = [{"ticker": "VCB"}]
+        with _db_url(), mock.patch("psycopg2.connect", return_value=conn) as connect:
+            connection.fetch_all("SELECT 1")
+            connection.close_pool()
+            connection.fetch_all("SELECT 1")
+        self.assertEqual(connect.call_count, 2,
+                          "close_pool must drop cached rows, not just the pool")
+
     def test_66_application_shutdown_closes_the_pool(self):
         # Drives the real ASGI lifespan protocol against the constructed app, so this proves the
         # WIRING, not just that close_pool() works when called directly. Startup must still open

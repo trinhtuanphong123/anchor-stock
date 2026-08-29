@@ -79,11 +79,24 @@ JOIN model_ticker_params p ON p.run_id = a.run_id
 LEFT JOIN stocks s ON s.ticker = p.ticker;
 
 -- -----------------------------------------------------------------------------
--- v_active_group_health — per anchor group, published stats plus latest drift.
+-- v_active_group_health — per anchor group, the active run's published stats.
 --
--- The monitor half is LEFT JOINed: before the first live session there is no
--- monitor row, and a group with no drift data yet should still be listed with
--- its published figures rather than vanishing from the dashboard.
+-- THE MONITOR HALF IS GONE (P15), and it is worth saying why rather than leaving
+-- a reader to wonder what "health" now means. This view used to LEFT JOIN
+-- LATERAL onto live_coverage_monitor for seven drift columns — monitor_date,
+-- fbar_rolling, fbar_published, coverage_drift, n_assignment_challenges,
+-- is_warm, serving_run_id. That table was withdrawn in P15 along with the rest
+-- of 00007: it held zero rows and nothing in this repository ever wrote to it,
+-- because the live-monitoring track was never built.
+--
+-- So those seven columns were NULL on every row, on every query, by
+-- construction. The LEFT JOIN made that look like "no drift data yet" — a state
+-- that would resolve — when it was in fact a state that never could. Publishing
+-- a permanently-null column is worse than not publishing it: a reader has to
+-- discover by experiment that it is never populated.
+--
+-- What remains is what was always real: the group's frozen figures from
+-- model_groups, gated to the active run.
 -- -----------------------------------------------------------------------------
 CREATE VIEW v_active_group_health AS
 SELECT
@@ -93,23 +106,9 @@ SELECT
     g.f_j,
     g.rho2_mean,
     g.rho2_min,
-    g.sector_composition,
-    m.bar_date                AS monitor_date,
-    m.fbar_rolling,
-    m.fbar_published,
-    m.coverage_drift,
-    m.n_assignment_challenges,
-    m.is_warm,
-    m.serving_run_id
+    g.sector_composition
 FROM v_active_model_run a
-JOIN model_groups g ON g.run_id = a.run_id
-LEFT JOIN LATERAL (
-    SELECT *
-    FROM live_coverage_monitor lcm
-    WHERE lcm.run_id = a.run_id
-    ORDER BY lcm.bar_date DESC
-    LIMIT 1
-) m ON true;
+JOIN model_groups g ON g.run_id = a.run_id;
 
 -- -----------------------------------------------------------------------------
 -- v_latest_indicators — most recent indicator row per ticker.

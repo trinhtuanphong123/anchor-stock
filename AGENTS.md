@@ -80,7 +80,7 @@ The two tracks share one code path and differ only in the storage sink. That is 
 | `data/` | `reference/` (curated sector map) and `artifacts/` (the frozen parameter set the dashboard serves). `raw/` and `processed/` are regenerable and ignored. |
 | `docs/` | Specs, decisions, plans, status. Tracked. |
 | `scripts/db/` | PowerShell helpers for the local Postgres container. |
-| `render.yaml` / `netlify.toml` | One host each, declaring only what it owns (D-29, D-30). |
+| `render.yaml` | Both deployed services — API and dashboard — one provider (D-31). |
 
 ## Invariants worth knowing before you edit
 

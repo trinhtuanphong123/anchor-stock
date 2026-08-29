@@ -73,9 +73,20 @@ describe("validateApiBaseUrl", () => {
     expect(validateApiBaseUrl("http://localhost:8000").ok).toBe(true);
     // A bare host:port parses with protocol "localhost:", which is not http(s).
     expect(validateApiBaseUrl("localhost:3000").ok).toBe(false);
-    expect(validateApiBaseUrl("/api").ok).toBe(false);
     expect(validateApiBaseUrl("ftp://example.com").ok).toBe(false);
     expect(validateApiBaseUrl("  ").ok).toBe(false);
+  });
+
+  // P15/D2: a same-origin deploy proxies /api/* to the API service (render.yaml's rewrite), so
+  // the site is configured with a root-relative value instead of the API's own absolute URL.
+  it("accepts a root-relative value as same-origin, normalized to an empty base", () => {
+    expect(validateApiBaseUrl("/")).toEqual({ ok: true, baseUrl: "" });
+    expect(validateApiBaseUrl("/api")).toEqual({ ok: true, baseUrl: "" });
+  });
+
+  it("still fails closed on an empty value -- same-origin must be requested explicitly", () => {
+    expect(validateApiBaseUrl("")).toMatchObject({ ok: false, code: "api_not_configured" });
+    expect(validateApiBaseUrl(undefined)).toMatchObject({ ok: false, code: "api_not_configured" });
   });
 
   it("strips trailing slashes so the join stays deterministic", () => {
@@ -105,5 +116,19 @@ describe("joinApiUrl", () => {
     expect(joinApiUrl("https://api.example.com/", "/api/tickers", "?limit=10")).toBe(
       "https://api.example.com/api/tickers?limit=10",
     );
+  });
+
+  // P15/D2: an empty base -- what a root-relative NEXT_PUBLIC_API_BASE_URL normalizes to --
+  // must resolve to a same-origin path, not a broken "undefined/api/x".
+  it("resolves an empty (same-origin) base to a bare path", () => {
+    expect(joinApiUrl("", "/api/x")).toBe("/api/x");
+  });
+});
+
+describe("resolveApiConfig — same-origin proxy (P15/D2)", () => {
+  it("treats a root-relative NEXT_PUBLIC_API_BASE_URL as live, same-origin", () => {
+    expect(
+      resolveApiConfig({ NODE_ENV: "production", NEXT_PUBLIC_API_BASE_URL: "/" }),
+    ).toEqual({ kind: "live", baseUrl: "" });
   });
 });
