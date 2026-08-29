@@ -142,8 +142,8 @@ a 503). Full `services/api` suite: 208/208 green (up from 196). `ruff check` cle
 - [x] D1 `render.yaml` declares both services; API on `starter`
 - [x] D2 same-origin rewrite; `validateApiBaseUrl` accepts a root-relative base
 - [x] D3 delete `netlify.toml`
-- [ ] D4 delete the two stale Render services, re-apply the Blueprint from this repository
-- [ ] D5 delete the Sydney Supabase project — **only after Validation is green**
+- [~] D4 re-apply the Blueprint from this repository — **done**; deleting the two stale services from the predecessor repo is still open
+- [ ] D5 delete the Sydney Supabase project — **only after Validation is green**; user has said to leave it alone for now regardless
 
 D1–D3 in detail: `render.yaml` rewritten — `anchor-model-web` (Static Site) declared alongside
 `anchor-model-api`, whose `plan` moved `free` → `starter`. Header rewritten to argue for one
@@ -164,6 +164,17 @@ D4/D5 are live, destructive infrastructure actions (deleting running services, d
 Supabase project with 365k rows) and are **not** taken without the user driving or explicitly
 confirming each one, regardless of this file's authorization — see the assistant's own safety
 rules on destructive/hard-to-reverse actions.
+
+D4 in practice: the user created the Blueprint directly through the Render dashboard rather than
+via CLI. Render appended `-lrgg` to **both** service names — `anchor-model-api`/`anchor-model-web`
+were already taken by another Render account — so the live hosts are
+`anchor-model-api-lrgg.onrender.com` / `anchor-model-web-lrgg.onrender.com`, not the names
+`render.yaml` assumed. Two values needed correcting once the real hostnames were known:
+`ALLOWED_ORIGINS` on `anchor-model-api` (set in the Render dashboard, `sync: false` so not in
+git) and the static site's `routes[0].destination` in `render.yaml` itself, which was hardcoded to
+the un-suffixed API host. The second is now fixed in git; the first the user set directly in the
+dashboard. The two stale services from the predecessor repo (`srv-da29ai9t0dsc738v8t20`,
+`srv-da29ai9t0dsc738v8t5g`) have not been touched.
 
 ### Docs
 - [x] `docs/RUNBOOK.md` — drop the returns build step, drop the ten-hour warning, replace "applied by hand"
@@ -197,13 +208,13 @@ Nothing below is reported as passing until it has actually run.
 | 5b | The D-20 boundary holds on the new project | `has_schema_privilege('anon','public','USAGE')` and anon-readable relation count | **PASSED** — `false` and `0` |
 | 6 | The artifact matches disk | `artifact.inspect --from-db ae2010a4ad426` — field for field, `P` exact | **PASSED** |
 | 7 | `v_active_model_run` returns **exactly one** row | direct SQL | **PASSED** — 1 row, `ae2010a4ad426` `is_active`/`is_primary` both true |
-| 8 | Batched writes are genuinely faster | time `mirror --run`; record the number | not attempted |
-| 9 | The API is alive | `curl https://<api>/health` → `"database": "ok"` | not attempted |
-| 10 | The three P13 routes answer | `/api/market/index-history?range=1m`, `/movers?horizon=1y`, `/liquidity?limit=5` | not attempted |
-| 11 | The same-origin rewrite works | DevTools: the request goes to the site's own origin, with **no** preflight OPTIONS | not attempted |
-| 12 | gzip is on | `content-encoding: gzip` on `/indicators`; sizes before and after | not attempted |
-| 13 | **No cold start** | leave it 30 minutes and open it again — Starter must not sleep. The row that matters most for a defence | not attempted |
-| 14 | The page's figures reconcile | `/` against a direct query of `v_market_overview`; `v_sector_performance` must sum to it | not attempted |
+| 8 | Batched writes are genuinely faster | time `mirror --run`; record the number | **PASSED** — `indicators.build --storage pg` (85 tickers, 121,014 rows via `execute_values`) ran end-to-end in **~5.5 minutes** (02:10:58–02:16:31), against the ~10 hour projection for `executemany` |
+| 9 | The API is alive | `curl https://<api>/health` → `"database": "ok"` | **PASSED** — `anchor-model-api-lrgg.onrender.com/health` → `{"status":"ok","database":"ok",...}` |
+| 10 | The three P13 routes answer | `/api/market/index-history?range=1m`, `/movers?horizon=1y`, `/liquidity?limit=5` | **PASSED** — all three answered with real rows; `movers` showed non-null `ret_252d` (e.g. `2.448276`), confirming the B2 backfill landed |
+| 11 | The same-origin rewrite works | DevTools: the request goes to the site's own origin, with **no** preflight OPTIONS | **PASSED** — `anchor-model-web-lrgg.onrender.com/api/market/liquidity?limit=1` returned 200 with real data through the static site's rewrite, once `render.yaml`'s `destination` was corrected from the assumed `anchor-model-api.onrender.com` to the actual assigned `anchor-model-api-lrgg.onrender.com` (Render appended `-lrgg` to both service names — the bare names were already taken) |
+| 12 | gzip is on | `content-encoding: gzip` on `/indicators`; sizes before and after | **PASSED** — `Accept-Encoding: gzip` → `Content-Encoding: gzip` present; `Accept-Encoding: identity` → absent, correctly negotiated. `Cache-Control: public, max-age=60` present on both; absent on `/health` |
+| 13 | **No cold start** | leave it 30 minutes and open it again — Starter must not sleep. The row that matters most for a defence | not attempted — needs a genuine 30-minute idle gap with no traffic, which this session's repeated polling hasn't produced |
+| 14 | The page's figures reconcile | `/` against a direct query of `v_market_overview`; `v_sector_performance` must sum to it | **PASSED** — `/api/market/overview` field-for-field equal to `v_market_overview` (turnover 8,352,129,774; volume 272,811,000; 85 tickers; advancers/decliners/unchanged 32/41/12); `sum(v_sector_performance)` reconciles exactly to the same three totals |
 
 ### Row 3, in full — the qualification matters more than the pass
 
