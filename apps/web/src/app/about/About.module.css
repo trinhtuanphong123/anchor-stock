@@ -1,0 +1,16 @@
+/* =============================================================================
+   /about — the one thing the design system cannot say about this screen: how its three panels
+   stack. Everything else — the box, the prose measure, the definition grid — is the global
+   `as-*` layer.
+
+   Same rhythm as /tickers and /anchors: this is a document, and the three read as one column.
+
+   Rule inherited from the token layer: only var(--*), never a literal value.
+   ============================================================================= */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-section);
+  padding-block: var(--space-6) var(--space-10);
+}

@@ -1,0 +1,26 @@
+/* Spacing — 4px base grid, with two off-grid steps (2px hairline gap, 20px) kept from source. */
+:root {
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --space-6: 20px;
+  --space-7: 24px;
+  --space-8: 32px;
+  --space-9: 40px;
+  --space-10: 48px;
+  --space-11: 64px;
+  --space-12: 80px;
+
+  --pad-card: var(--space-7);
+  --pad-card-cozy: var(--space-5);
+  --gap-inline: var(--space-3);
+  --gap-stack: var(--space-4);
+  --gap-section: var(--space-8);
+
+  /* Content well. The shipped app is 1280px; DESIGN.md §2.5 raises the target to 1440px. */
+  --layout-max: 1440px;
+  --layout-max-shipped: 1280px;
+  --layout-gutter: var(--space-7);
+}

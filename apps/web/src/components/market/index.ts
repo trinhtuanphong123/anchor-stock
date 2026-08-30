@@ -1,9 +1,9 @@
-/** Market screen components. `ProvenanceStrip` moved to `components/` in P10 — it is rendered by
-    the shell on every page now, not by this screen.
+/** Market screen components.
 
-    `KpiRow` is gone: `MarketBar` supersedes it, and the reason is in that file's header. */
+    `MoversTable` and `LiquidityTable` are gone: they are one tabbed `SessionBoard` now — the
+    reason is in that file's header. `ProvenanceStrip` left for `components/` in P10; the shell
+    renders it on every page rather than this screen. */
 export { IndexChart, IndexQuote } from "./IndexChart";
-export { LiquidityTable } from "./LiquidityTable";
 export { MarketBar } from "./MarketBar";
-export { MoversTable } from "./MoversTable";
 export { SectorTreemap } from "./SectorTreemap";
+export { SessionBoard } from "./SessionBoard";

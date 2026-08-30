@@ -2,22 +2,25 @@
 
 import type { IndexHistoryResponse, MarketOverviewResponse } from "@/lib/api";
 import type { ResourceState } from "@/hooks/dashboard";
+import { BreadthBar, StatBlock } from "@/components/ds";
 import { ErrorState, LoadingState } from "@/components/states";
 import { IndexQuote } from "./IndexChart";
-import styles from "./MarketHome.module.css";
-import { DASH, formatInt, formatPercent, formatTurnoverTy, signClass } from "./format";
+import { DASH, formatInt, formatPercent, formatTrillion, signClass } from "./format";
 
 /**
  * The board header: the index quote, the session's breadth, and what it traded.
  *
- * Replaces P10's six-card KPI grid, and the reason is hierarchy rather than taste. In a grid of
- * equal cards the index level, the ticker count and the session date all carry the same weight,
- * so the screen opens with no subject. Here the quote is the subject at 26px and everything else
- * annotates it at 11–13px — the arrangement a trading terminal uses, for the same reason.
+ * A symbol header, not a row of KPI cards. In a grid of equal cards the index level, the ticker
+ * count and the session date all carry the same weight, so the screen opens with no subject. Here
+ * the quote is the subject at the 26px mono step and everything else annotates it at 11–13px.
  *
- * What it does NOT show is unchanged from D-19: there are no foreign-flow (khối ngoại) figures,
- * because nothing in this system collects that data and no column exists for it. Turnover,
- * breadth and the index move are what stand in their place.
+ * What it does NOT show: there are no foreign-flow (khối ngoại) figures, because nothing in this
+ * system collects that data and no column exists for it. Turnover, breadth and the index move are
+ * what stand in their place.
+ *
+ * The two panels it draws from are INDEPENDENT. The quote reads the chart's own series so the big
+ * number and the chart's right edge are the same number by construction; everything to its right
+ * reads the overview. Either can still be loading while the other renders.
  */
 export function MarketBar({
   overview,
@@ -34,90 +37,38 @@ export function MarketBar({
   }
 
   const o = overview.data;
-  // The three counts include only tickers WITH a ret_1d, so they need not sum to n_tickers.
-  const counted = o.advancers + o.decliners + o.unchanged;
+  // Tickers with no ret_1d belong to no group, so the three counts need not sum to n_tickers.
+  // The bar says which denominator it is drawn over rather than leaving the gap unexplained.
   const missing = o.n_tickers - o.n_with_return;
-  const pct = (n: number): string => (counted > 0 ? `${(n / counted) * 100}%` : "0%");
-  const daySign = signClass(o.index_ret_1d);
+  const note =
+    missing > 0
+      ? `Trên ${formatInt(o.n_with_return)} mã có tỷ suất sinh lợi. ${formatInt(missing)} mã chưa đủ lịch sử nên không thuộc nhóm nào.`
+      : `Trên ${formatInt(o.n_with_return)} mã có tỷ suất sinh lợi.`;
 
   return (
-    <div className={styles.marketBar}>
-      {/* The quote reads from the CHART's series, not from the overview, so the big number and
-          the chart's right edge are the same number by construction. The overview's own
-          index_close is still used below as the session line — the two agree, and where they
-          would not, the reason is a stale panel and it should be visible. */}
-      {index.kind === "data" ? (
-        <IndexQuote state={index} />
-      ) : (
-        <div className={styles.symbolBlock}>
-          <div className={styles.symbolName}>
-            <span className={styles.symbolTicker}>{o.index_symbol ?? "Chỉ số"}</span>
-          </div>
-          <div className={styles.symbolQuote}>
-            <span className={styles.symbolLevel}>{DASH}</span>
-          </div>
-        </div>
-      )}
+    <div className="as-marketbar">
+      <IndexQuote state={index} />
 
-      <div className={styles.stat}>
-        <span className={styles.statLabel}>±% phiên</span>
-        <span className={`${styles.statValue} ${styles[daySign]}`}>
-          {/* Null when no run is active — the symbol and its move both come from the run, never
-              from a hard-coded 'VNINDEX'. A dash means "không có", not "không đổi". */}
-          {o.index_ret_1d === null ? DASH : formatPercent(o.index_ret_1d)}
-        </span>
-      </div>
+      <StatBlock
+        label="±% phiên"
+        // A dash means "không có", not "không đổi": index_ret_1d is null when no run is active.
+        value={o.index_ret_1d === null ? DASH : formatPercent(o.index_ret_1d)}
+        tone={signClass(o.index_ret_1d)}
+      />
 
-      <div className={styles.breadth}>
-        <div
-          className={styles.breadthBar}
-          role="img"
-          aria-label={`${o.advancers} mã tăng, ${o.unchanged} mã đứng giá, ${o.decliners} mã giảm`}
-          title={
-            missing > 0
-              ? `Trên ${formatInt(o.n_with_return)} mã có tỷ suất sinh lợi. ${formatInt(missing)} mã chưa đủ lịch sử nên không thuộc nhóm nào.`
-              : `Trên ${formatInt(o.n_with_return)} mã có tỷ suất sinh lợi.`
-          }
-        >
-          <span className={styles.breadthUp} style={{ width: pct(o.advancers) }} />
-          <span className={styles.breadthFlat} style={{ width: pct(o.unchanged) }} />
-          <span className={styles.breadthDown} style={{ width: pct(o.decliners) }} />
-        </div>
-        <div className={styles.breadthLegend}>
-          <span className={styles.pos}>
-            <b>{formatInt(o.advancers)}</b> tăng
-          </span>
-          <span className={styles.flat}>
-            <b>{formatInt(o.unchanged)}</b> đứng
-          </span>
-          <span className={styles.neg}>
-            <b>{formatInt(o.decliners)}</b> giảm
-          </span>
-        </div>
-      </div>
+      <BreadthBar
+        up={o.advancers}
+        flat={o.unchanged}
+        down={o.decliners}
+        note={note}
+      />
 
-      <div className={styles.stat}>
-        {/* close is in nghìn đồng, so turnover_value is too; formatTurnoverTy does the /1e6 in
-            the one place it can be done. See format.ts for the full unit chain. */}
-        <span className={styles.statLabel}>GT giao dịch</span>
-        <span className={styles.statValue}>
-          {formatTurnoverTy(o.total_turnover)}
-          <span className={styles.statUnit}>tỷ đ</span>
-        </span>
-      </div>
-
-      <div className={styles.stat}>
-        <span className={styles.statLabel}>KL giao dịch</span>
-        <span className={styles.statValue}>
-          {formatInt(o.total_volume)}
-          <span className={styles.statUnit}>cp</span>
-        </span>
-      </div>
-
-      <div className={styles.stat}>
-        <span className={styles.statLabel}>Số mã</span>
-        <span className={styles.statValue}>{formatInt(o.n_tickers)}</span>
-      </div>
+      {/* close is in nghìn đồng, so turnover_value is too; formatTrillion does the /1e9 in the one
+          place it can be done. This is the whole-basket total, which is why it is the one figure
+          on the board carried in nghìn tỷ đ rather than the per-row tỷ đ. See format.ts. */}
+      <StatBlock label="GT giao dịch" value={formatTrillion(o.total_turnover)} unit="nghìn tỷ đ" />
+      <StatBlock label="KL giao dịch" value={formatInt(o.total_volume)} unit="cp" />
+      <StatBlock label="Số mã" value={formatInt(o.n_tickers)} />
     </div>
   );
 }

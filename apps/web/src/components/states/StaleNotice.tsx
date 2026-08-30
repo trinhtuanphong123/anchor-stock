@@ -1,19 +1,16 @@
+import { Notice } from "./Notice";
+
 /**
- * Surfaces freshness/stale metadata (UI_SPEC Global States: Stale). Affirms the
- * latest valid snapshot is shown; the as-of chip is always present when known.
+ * Rows whose latest bar is older than the current session.
+ *
+ * It states which snapshot is on screen and stops there: nothing was recomputed, nothing is
+ * live, and the as-of date is the whole content of the notice.
  */
-export function StaleNotice({
-  isStale,
-  asOfDate,
-}: {
-  isStale: boolean;
-  asOfDate?: string | null;
-}) {
+export function StaleNotice({ isStale, asOfDate }: { isStale: boolean; asOfDate?: string | null }) {
   if (!isStale) return null;
   return (
-    <p className="status-notice">
-      <span className="status-notice__label">Ghi chú:</span>
-      Showing the latest valid snapshot{asOfDate ? ` (as of ${asOfDate})` : ""}.
-    </p>
+    <Notice tone="stale" label="Dữ liệu cũ:">
+      Đang hiển thị ảnh chụp hợp lệ gần nhất{asOfDate ? `, đến ${asOfDate}` : ""}.
+    </Notice>
   );
 }

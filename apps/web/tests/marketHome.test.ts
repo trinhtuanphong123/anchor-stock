@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MOVER_RET_FIELD, type MoverHorizon, type MoverRow } from "@/lib/api";
-import { axisDate, niceStep, priceTicks } from "@/components/market/IndexChart";
+import { axisDate, niceStep, priceTicks } from "@/components/charts/scale";
 import { MOCK_INDEX_HISTORY, MOCK_MARKET_LIQUIDITY, MOCK_TOP_GAINERS } from "@/lib/mock";
 
 /**

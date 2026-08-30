@@ -273,7 +273,7 @@ export interface SectorRow {
   n_tickers: number;
   n_with_return: number;
   mean_ret_1d: number | null;
-  /** nghìn đồng — `formatTurnoverTy` converts. */
+  /** nghìn đồng — `formatBillion` converts. */
   total_turnover: number | null;
   total_volume: number | null;
 }

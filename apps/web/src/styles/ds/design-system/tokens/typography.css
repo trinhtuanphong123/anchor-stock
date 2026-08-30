@@ -1,0 +1,37 @@
+/* Type. Roboto for words, Roboto Mono for figures — the product's hard constraint.
+   Only 400 and 500 exist: hierarchy is carried by SIZE and COLOUR, not by weight.
+   --fw-semibold is kept as a NAME and mapped to 500 so nothing asks for a synthesised bold. */
+
+:root {
+  /* --font-sans-loaded / --font-mono-loaded are set by next/font on <html>. Going through them
+     is what keeps the self-hosted, vietnamese-subset faces in play; naming "Roboto" directly
+     only resolves on a machine that happens to have it installed. The literal stays as the
+     fallback so a page consuming this sheet without next/font still gets the right family. */
+  --font-sans: var(--font-sans-loaded, "Roboto"), system-ui, sans-serif;
+  --font-mono: var(--font-mono-loaded, "Roboto Mono"), ui-monospace, monospace;
+
+  --fw-regular: 400; /* @kind font */
+  --fw-medium: 500; /* @kind font */
+  --fw-semibold: 500; /* @kind font */
+
+  /* Composite roles — use as: font: var(--type-body) */
+  --type-display: 500 30px/1.2 var(--font-sans);
+  --type-title: 500 22px/1.3 var(--font-sans);
+  --type-heading: 500 17px/1.4 var(--font-sans);
+  --type-subhead: 500 15px/1.4 var(--font-sans);
+  --type-body: 400 14px/1.5 var(--font-sans);
+  --type-body-strong: 500 14px/1.5 var(--font-sans);
+  --type-label: 500 12px/1.4 var(--font-sans);
+  --type-caption: 400 12px/1.4 var(--font-sans);
+  --type-micro: 400 11px/1.4 var(--font-sans);
+  --type-data-lg: 400 26px/1.15 var(--font-mono);
+  --type-data: 400 13px/1.4 var(--font-mono);
+  --type-data-strong: 500 13px/1.4 var(--font-mono);
+  --type-data-sm: 400 11px/1.4 var(--font-mono);
+  --type-prose: 400 15px/1.7 var(--font-sans);
+  --type-prose-lead: 400 17px/1.6 var(--font-sans);
+
+  --tracking-label: 0.06em;
+  --tracking-data: 0.01em;
+  --num-tabular: tabular-nums; /* @kind font */
+}

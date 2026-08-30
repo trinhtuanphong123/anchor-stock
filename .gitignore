@@ -41,3 +41,4 @@ data/processed/
 .scratch/
 .DS_Store
 Thumbs.db
+/reference

@@ -1,33 +1,22 @@
 "use client";
 
-import { ChartSvg, ChartAxisLine, ChartTickLabel } from "./ChartSvg";
-import { ChartAxisLabel } from "./ChartAxisLabel";
-import { ChartLegend, type LegendItem } from "./ChartLegend";
+import { useId } from "react";
 import { ChartCrosshair, ChartTooltip, useChartHover } from "./ChartHover";
-import { DASH, formatDate, formatDecimal, formatInt } from "@/components/market/format";
-import styles from "./PriceHistoryChart.module.css";
-
-/* SVG coordinate space (viewBox units). Upper region holds the close line, the
-   lower region holds volume bars; the x-axis row sits below both. */
-const X0 = 6;
-const X1 = 634;
-const PY0 = 8;
-const PY1 = 150;
-const VY0 = 166;
-const VY1 = 224;
-const XB = 236;
-
-const nf0 = (v: number): string =>
-  v.toLocaleString("en-US", { maximumFractionDigits: 0 });
+import { axisDate, labelIndexes, priceTicks } from "./scale";
+import {
+  DASH,
+  formatCompactVolume,
+  formatDecimal,
+  formatInt,
+  formatSession,
+} from "@/components/market/format";
 
 /**
- * The minimum a bar must supply for this chart — the three fields it actually reads.
+ * The minimum a bar must supply — the three fields this chart actually reads.
  *
- * Declared here rather than imported from `@/lib/api`, which is what this file used to do. A
- * presentational primitive that imports a response type is coupled to whichever API contract
- * happens to be current, and P8's rewrite of that contract broke this file for no reason
- * relating to charts. TypeScript is structural, so a richer OHLCV row from the P9 history route
- * satisfies this without a cast.
+ * Declared here rather than imported from `@/lib/api`: a presentational primitive that imports a
+ * response type is coupled to whichever API contract happens to be current. TypeScript is
+ * structural, so a richer OHLCV row from the history route satisfies this without a cast.
  */
 export interface PriceBar {
   date: string;
@@ -35,261 +24,293 @@ export interface PriceBar {
   volume: number;
 }
 
+/** Fixed viewBox scaled by CSS — the coordinate idiom every chart in this package uses. */
+const VW = 900;
+/** The price scale lives on the RIGHT, where the newest bar is. */
+const PAD_L = 8;
+const PAD_R = 64;
+const X0 = PAD_L;
+const X1 = VW - PAD_R;
+
 /**
- * Daily close-line + volume chart (UI_SPEC §5, CHART_SPEC §6, P12-S06B). Reads
- * typed daily bars only and maps their values into SVG coordinates — it computes
- * no indicators, averages, returns, or annotations, and fabricates no dates. The
- * close line is the subject series; volume bars are neutral. Bars whose close is
- * non-finite are omitted from the price line and endpoint (never substituted). The
- * final typed close is labelled at the endpoint (mono) only when it and its
- * coordinates are finite — no value is derived. Axes and units are explicit (price
- * in nghin dong -- the daily_bars convention, NOT dong -- volume in shares, x = sessions). The caller passes a unique, stable
- * `id` used for the accessible title/description association.
+ * One component, two framings.
+ *
+ * `pane="price"` and `pane="volume"` each own a full-height plot and their own axis, which is how
+ * `/tickers` shows them: two frames, each saying one thing and titling itself in full words.
+ * `pane="both"` keeps the stacked reading, where volume is a THIRD of the height and never half —
+ * volume is context for the price, and a pane that competes with the subject makes the reader
+ * choose which chart they are reading.
+ */
+const LAYOUT = {
+  both: { vh: 360, price: [14, 250], vol: [268, 332] },
+  price: { vh: 300, price: [14, 262], vol: null },
+  volume: { vh: 220, price: null, vol: [18, 182] },
+} as const;
+
+export type PricePane = keyof typeof LAYOUT;
+
+/**
+ * Daily close line over a volume histogram, or either pane alone.
+ *
+ * Four rules, all of them the design system's rather than this file's:
+ *
+ *  1. **The area closes to the range's OPENING level**, marked by the dashed amber baseline — not
+ *     to the bottom of the frame. What it shades is the gain or loss over the window; closing to
+ *     the frame would shade the price's absolute level, a quantity with no meaning as an area.
+ *     (The handoff kit closes to the frame. The chart law in CLAUDE.md is explicit and wins, and
+ *     it is what `market/IndexChart` already does — two line charts in one product shading
+ *     different quantities would be worse than either choice on its own.)
+ *  2. **A non-finite close is a gap, never a zero.** Runs break at a missing bar and nothing is
+ *     interpolated across them.
+ *  3. **Volume bars are tinted by their own session's direction**, using the `-mark` step — those
+ *     tokens are for fills and strokes, never for text.
+ *  4. **The crosshair is neutral and keyboard-reachable.** `useChartHover` carries the
+ *     arrow/Home/End/Esc parity a bespoke pointer handler quietly drops.
  */
 export function PriceHistoryChart({
-  id,
   bars,
+  pane = "both",
+  longRange = false,
   ticker,
-  interval,
 }: {
-  id: string;
   bars: PriceBar[];
+  pane?: PricePane;
+  /** Month labels rather than day labels — true past roughly half a year. */
+  longRange?: boolean;
   ticker?: string;
-  interval?: string;
 }) {
+  const L = LAYOUT[pane];
   const n = bars.length;
 
-  // Called before the empty-bars guard below: hooks cannot sit behind an early return, and the
-  // hook is written to tolerate count === 0. The two plot bands (price / volume) are passed so the
-  // hook can say which pane the pointer is over, keeping the crosshair and tooltip of each pane
-  // from projecting into the other.
+  // Two instances of this chart live on the ticker screen, so the gradient ids must be unique per
+  // mount — a shared id makes the second instance paint the first one's fill.
+  const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
+
+  // Before the guard below: hooks cannot sit behind an early return, and the hook tolerates
+  // `count: 0`. The panes are passed so the readout belongs to the band under the pointer only.
   const hover = useChartHover({
     count: n,
     x0: X0,
     x1: X1,
-    vw: 640,
-    vh: 240,
+    vw: VW,
+    vh: L.vh,
     panes: [
-      { key: "price", top: PY0, bottom: PY1 },
-      { key: "volume", top: VY0, bottom: VY1 },
+      ...(L.price ? [{ key: "price", top: L.price[0], bottom: L.price[1] }] : []),
+      ...(L.vol ? [{ key: "volume", top: L.vol[0], bottom: L.vol[1] }] : []),
     ],
   });
 
-  if (n === 0) return null;
+  const closes = bars.map((b) => b.close).filter((c) => Number.isFinite(c));
+  if (n < 2 || closes.length < 2) return null;
 
-  const xFor = (i: number): number =>
-    n <= 1 ? (X0 + X1) / 2 : X0 + (i / (n - 1)) * (X1 - X0);
+  let lo = Math.min(...closes);
+  let hi = Math.max(...closes);
+  // 8% headroom so the line never touches the frame, and a floor so a dead-flat series still gets
+  // a band rather than dividing by zero.
+  const pad = Math.max((hi - lo) * 0.08, 0.01);
+  lo -= pad;
+  hi += pad;
 
-  // Split finite closes into contiguous runs, breaking the sequence whenever a
-  // non-finite close appears. Each run keeps its bars' original indexes (and thus
-  // x-positions), so a run is never joined across a gap, x-spacing is never
-  // compressed, and no value is substituted, filled, or interpolated.
-  const runs: { i: number; close: number }[][] = [];
-  let run: { i: number; close: number }[] = [];
-  for (let i = 0; i < n; i++) {
-    const c = bars[i].close;
-    if (Number.isFinite(c)) {
-      run.push({ i, close: c });
+  const maxVol = Math.max(0, ...bars.map((b) => (Number.isFinite(b.volume) ? b.volume : 0)));
+
+  const xAt = (i: number): number => X0 + (i / (n - 1)) * (X1 - X0);
+  const yAt = (v: number): number =>
+    L.price === null ? 0 : L.price[1] - ((v - lo) / (hi - lo)) * (L.price[1] - L.price[0]);
+  const vAt = (v: number): number =>
+    L.vol === null || maxVol === 0 ? 0 : L.vol[1] - (v / maxVol) * (L.vol[1] - L.vol[0]);
+
+  // Contiguous runs of drawable closes. A gap ends a run (rule 2).
+  const runs: Array<Array<{ i: number; x: number; y: number; close: number }>> = [];
+  let run: Array<{ i: number; x: number; y: number; close: number }> = [];
+  bars.forEach((b, i) => {
+    if (Number.isFinite(b.close)) {
+      run.push({ i, x: xAt(i), y: yAt(b.close), close: b.close });
     } else if (run.length > 0) {
       runs.push(run);
       run = [];
     }
-  }
+  });
   if (run.length > 0) runs.push(run);
-  const hasClose = runs.length > 0;
 
-  // Presentational min/max over all finite closes across every run; volume max is
-  // independent of price geometry.
-  let minC = Infinity;
-  let maxC = -Infinity;
-  for (const r of runs) {
-    for (const p of r) {
-      if (p.close < minC) minC = p.close;
-      if (p.close > maxC) maxC = p.close;
-    }
-  }
-  let maxV = 0;
-  for (const b of bars) {
-    if (b.volume > maxV) maxV = b.volume;
-  }
+  const drawn = runs.flat();
+  const first = drawn[0];
+  const last = drawn[drawn.length - 1];
+  const up = last.close >= first.close;
+  const baselineY = yAt(first.close);
 
-  const priceY = (c: number): number =>
-    maxC === minC
-      ? (PY0 + PY1) / 2
-      : PY1 - ((c - minC) / (maxC - minC)) * (PY1 - PY0);
+  const line = (r: typeof drawn): string =>
+    r.map((p, k) => `${k === 0 ? "M" : "L"}${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
+  // The area spans the whole drawn extent and closes to the opening level (rule 1).
+  const area = `${line(drawn)} L${last.x.toFixed(2)} ${baselineY.toFixed(2)} L${first.x.toFixed(2)} ${baselineY.toFixed(2)} Z`;
 
-  const barW = Math.max(0.5, Math.min(6, ((X1 - X0) / n) * 0.6));
+  const barW = Math.max(1, ((X1 - X0) / n) * 0.7);
+  const gradientId = `pv-${up ? "up" : "down"}-${uid}`;
+  const clipId = `pv-clip-${uid}`;
 
-  // dd/mm/yyyy, through the one formatter that does the conversion — the axis of a chart
-  // is not a place to introduce a second date format on the same screen.
-  const first = formatDate(bars[0].date);
-  const last = formatDate(bars[n - 1].date);
-
-  // Endpoint = the final typed bar, drawn only when its close and both derived
-  // coordinates are finite. A non-finite final close draws no dot and no label,
-  // and is not substituted by an earlier finite bar.
-  const lastClose = bars[n - 1].close;
-  const lastX = xFor(n - 1);
-  const lastCloseFinite = Number.isFinite(lastClose);
-  const lastY = lastCloseFinite ? priceY(lastClose) : NaN;
-  const showEndpoint =
-    lastCloseFinite && Number.isFinite(lastX) && Number.isFinite(lastY);
-  const lastLabelY = lastY <= PY0 + 14 ? lastY + 12 : lastY - 6;
-
-  const title = `${ticker ? `${ticker} — ` : ""}giá và khối lượng theo phiên`;
-  const desc = `Giá đóng cửa và khối lượng qua ${n} phiên, từ ${first} đến ${last}.${
-    showEndpoint ? ` Giá đóng cửa gần nhất ${nf0(lastClose)} nghìn đồng.` : ""
-  }`;
-
-  // The hovered bar, if any. A bar whose close is non-finite still has a volume worth reading, so
-  // the tooltip shows the dash for price and the real figure for volume — the same rule the line
-  // itself follows, where a gap is never filled in.
-  const hoverBar = hover.index !== null ? bars[hover.index] : null;
-
-  const legendItems: LegendItem[] = [
-    { label: "Giá đóng cửa (nghìn đ)", color: "var(--accent)", variant: "line" },
-    { label: "Khối lượng (cp)", color: "var(--data-neutral)", variant: "solid" },
-  ];
+  const hovered = hover.index === null ? null : bars[hover.index];
+  const hoveredX = hover.index === null ? 0 : xAt(hover.index);
+  // The crosshair spans the hovered band only: a rule crossing both panes read as the pane below
+  // being "synced" to the one under the cursor.
+  const hoveredBand: Array<readonly [number, number]> =
+    hover.pane === "volume" && L.vol !== null
+      ? [[L.vol[0], L.vol[1]]]
+      : L.price !== null
+        ? [[L.price[0], L.price[1]]]
+        : [];
+  const label =
+    pane === "volume"
+      ? `Khối lượng giao dịch qua ${n} phiên`
+      : pane === "price"
+        ? `Giá giao dịch qua ${n} phiên`
+        : `Giá và khối lượng qua ${n} phiên`;
+  const named = ticker ? `${ticker} — ${label}` : label;
 
   return (
-    <div className={styles.wrap}>
-      <p className={styles.range}>
-        {first} &rarr; {last} &middot; {n} phiên
-        {interval ? ` · ${interval}` : ""}
-      </p>
+    <div {...hover.surfaceProps} aria-label={`${named}. Dùng phím mũi tên để đọc từng phiên.`}>
+      <svg className="as-chart-svg" viewBox={`0 0 ${VW} ${L.vh}`} role="img" aria-label={named}>
+        <defs>
+          <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+            <stop
+              offset="0%"
+              stopColor={up ? "var(--chart-area-top)" : "var(--chart-area-top-neg)"}
+            />
+            <stop
+              offset="100%"
+              stopColor={up ? "var(--chart-area-bottom)" : "var(--chart-area-bottom-neg)"}
+            />
+          </linearGradient>
+          {L.price && (
+            <clipPath id={clipId}>
+              {/* The area overshoots the band when the baseline sits near an edge. */}
+              <rect x={X0} y={L.price[0]} width={X1 - X0} height={L.price[1] - L.price[0]} />
+            </clipPath>
+          )}
+        </defs>
 
-      <ChartLegend items={legendItems} />
+        {L.price &&
+          priceTicks(lo, hi).map((v) => (
+            <g key={v}>
+              <line x1={X0} y1={yAt(v)} x2={X1} y2={yAt(v)} className="as-chart-grid" />
+              <text x={X1 + 8} y={yAt(v) + 4} className="as-chart-tick as-chart-tick--right">
+                {formatDecimal(v, 2)}
+              </text>
+            </g>
+          ))}
 
-      <div className={styles.chartRow}>
-        <div className={styles.yAxis}>
-          <ChartAxisLabel axis="y" label="Giá" unit="nghìn đ" />
-          <ChartAxisLabel axis="y" label="KL" unit="cp" />
-        </div>
-        <div
-          {...hover.surfaceProps}
-          className={`${hover.surfaceProps.className} ${styles.svgBox}`}
-          aria-label={`${title}. Dùng phím mũi tên để đọc từng phiên.`}
-        >
-          <ChartSvg id={id} title={title} desc={desc} viewBox="0 0 640 240">
-            <ChartAxisLine x1={X0} y1={PY0} x2={X1} y2={PY0} variant="grid" />
-            <ChartAxisLine x1={X0} y1={PY1} x2={X1} y2={PY1} variant="axis" />
-            <ChartAxisLine x1={X0} y1={VY1} x2={X1} y2={VY1} variant="axis" />
+        {L.price && (
+          <>
+            <g clipPath={`url(#${clipId})`}>
+              <path d={area} fill={`url(#${gradientId})`} stroke="none" />
+              <line x1={X0} y1={baselineY} x2={X1} y2={baselineY} className="as-chart-baseline" />
+              {runs.map((r) =>
+                r.length >= 2 ? (
+                  <path
+                    key={`run-${r[0].i}`}
+                    d={line(r)}
+                    className={`as-chart-line ${up ? "as-chart-line--up" : "as-chart-line--down"}`}
+                  />
+                ) : null,
+              )}
+            </g>
+            {/* The last-close chip, PINNED TO THE SCALE — "where the series actually is now",
+                which is why it sits in the right gutter and not on the line. */}
+            <rect
+              x={X1 + 2}
+              y={yAt(last.close) - 9}
+              width={PAD_R - 6}
+              height={18}
+              rx={2}
+              className="as-chart-lasttag"
+            />
+            <text
+              x={X1 + 2 + (PAD_R - 6) / 2}
+              y={yAt(last.close) + 4}
+              className="as-chart-lasttag-text"
+            >
+              {formatDecimal(last.close, 2)}
+            </text>
+          </>
+        )}
 
+        {L.vol && maxVol > 0 && (
+          <>
+            {priceTicks(0, maxVol, 3).map((v) => (
+              <g key={`v-${v}`}>
+                <line x1={X0} y1={vAt(v)} x2={X1} y2={vAt(v)} className="as-chart-grid" />
+                <text x={X1 + 8} y={vAt(v) + 4} className="as-chart-tick as-chart-tick--right">
+                  {formatCompactVolume(v)}
+                </text>
+              </g>
+            ))}
             {bars.map((b, i) => {
-              const h = maxV > 0 ? (b.volume / maxV) * (VY1 - VY0) : 0;
+              if (!Number.isFinite(b.volume) || b.volume <= 0) return null;
+              // The session's OWN direction, against the previous close — a bar's colour says
+              // which way that session went, not which way the window went.
+              const prev = i > 0 ? bars[i - 1].close : b.close;
+              const rising = !Number.isFinite(prev) || b.close >= prev;
               return (
                 <rect
-                  key={`v-${i}`}
-                  x={xFor(i) - barW / 2}
-                  y={VY1 - h}
+                  key={`vol-${i}`}
+                  x={xAt(i) - barW / 2}
+                  y={vAt(b.volume)}
                   width={barW}
-                  height={h}
-                  className={styles.volBar}
+                  height={Math.max(0.5, L.vol[1] - vAt(b.volume))}
+                  fill={rising ? "var(--data-pos-mark)" : "var(--data-neg-mark)"}
+                  opacity={hover.index === i ? 0.95 : 0.45}
                 />
               );
             })}
+          </>
+        )}
 
-            {runs.map((r) =>
-              r.length >= 2 ? (
-                <polyline
-                  key={`run-${r[0].i}-${r[r.length - 1].i}`}
-                  points={r
-                    .map(
-                      (p) =>
-                        `${xFor(p.i).toFixed(2)},${priceY(p.close).toFixed(2)}`,
-                    )
-                    .join(" ")}
-                  className={styles.closeLine}
-                />
-              ) : null,
-            )}
-            {showEndpoint && (
-              <>
-                <circle
-                  cx={lastX}
-                  cy={lastY}
-                  r={2.5}
-                  className={styles.lastDot}
-                />
-                <ChartTickLabel x={lastX - 4} y={lastLabelY} anchor="end">
-                  {nf0(lastClose)}
-                </ChartTickLabel>
-              </>
-            )}
+        {labelIndexes(n, 6).map((i) => (
+          <text
+            key={i}
+            x={Math.min(Math.max(xAt(i), X0 + 16), X1 - 16)}
+            y={L.vh - 4}
+            className="as-chart-tick as-chart-tick--mid"
+          >
+            {axisDate(bars[i].date, longRange)}
+          </text>
+        ))}
 
-            {hasClose && (
-              <ChartTickLabel x={X0} y={PY0 + 9} anchor="start">
-                {nf0(maxC)}
-              </ChartTickLabel>
-            )}
-            {hasClose && (
-              <ChartTickLabel x={X0} y={PY1 - 2} anchor="start">
-                {nf0(minC)}
-              </ChartTickLabel>
-            )}
-            <ChartTickLabel x={X0} y={VY0 + 8} anchor="start">
-              {nf0(maxV)}
-            </ChartTickLabel>
-            <ChartTickLabel x={X0} y={XB} anchor="start">
-              {first}
-            </ChartTickLabel>
-            <ChartTickLabel x={X1} y={XB} anchor="end">
-              {last}
-            </ChartTickLabel>
+        {/* A neutral dashed rule. Tinting the crosshair would put a directional colour on a mark
+            that measures nothing. */}
+        {hovered && (
+          <ChartCrosshair
+            x={hoveredX}
+            segments={hoveredBand}
+            dots={
+              hover.pane === "price" && L.price !== null && Number.isFinite(hovered.close)
+                ? [
+                    {
+                      y: yAt(hovered.close),
+                      color: up ? "var(--data-pos-mark)" : "var(--data-neg-mark)",
+                    },
+                  ]
+                : undefined
+            }
+          />
+        )}
+      </svg>
 
-            {hoverBar && (
-              <ChartCrosshair
-                x={xFor(hover.index as number)}
-                segments={
-                  hover.pane === "price"
-                    ? [[PY0, PY1]]
-                    : hover.pane === "volume"
-                      ? [[VY0, VY1]]
-                      : []
-                }
-                dots={
-                  hover.pane === "price" && Number.isFinite(hoverBar.close)
-                    ? [{ y: priceY(hoverBar.close), color: "var(--accent)" }]
-                    : undefined
-                }
-              />
-            )}
-          </ChartSvg>
-
-          {hoverBar && (
-            <ChartTooltip
-              left={hover.fracAt(hover.index as number)}
-              top={
-                hover.pane === "volume" ? VY0 / 240
-                : hover.pane === "price" ? PY0 / 240
-                : 0
-              }
-              title={formatDate(hoverBar.date)}
-              rows={
-                hover.pane === "volume"
-                  ? [
-                      {
-                        label: "Khối lượng",
-                        value: formatInt(hoverBar.volume),
-                        color: "var(--data-neutral)",
-                      },
-                    ]
-                  : [
-                      {
-                        label: "Giá đóng cửa",
-                        value: Number.isFinite(hoverBar.close)
-                          ? formatDecimal(hoverBar.close, 2)
-                          : DASH,
-                        color: "var(--accent)",
-                      },
-                    ]
-              }
-            />
-          )}
-        </div>
-      </div>
-
-      <ChartAxisLabel axis="x" label="Phiên giao dịch" className={styles.xAxis} />
+      {hovered && hover.index !== null && (
+        <ChartTooltip
+          left={hover.fracAt(hover.index)}
+          title={formatSession(hovered.date)}
+          rows={
+            hover.pane === "volume"
+              ? [{ label: "Khối lượng (cp)", value: formatInt(hovered.volume) }]
+              : [
+                  {
+                    label: "Giá đóng cửa (nghìn đ)",
+                    value: Number.isFinite(hovered.close) ? formatDecimal(hovered.close, 2) : DASH,
+                  },
+                  ...(L.vol ? [{ label: "Khối lượng (cp)", value: formatInt(hovered.volume) }] : []),
+                ]
+          }
+        />
+      )}
     </div>
   );
 }

@@ -2,8 +2,7 @@
 
 import { useActiveModelRun } from "@/hooks/dashboard";
 import { coverageFbarAdjusted } from "@/lib/api";
-import { DASH, formatDate, formatDecimal, formatInt } from "@/components/market/format";
-import styles from "./Provenance.module.css";
+import { DASH, formatDecimal, formatInt, formatSession } from "@/components/market/format";
 
 /**
  * Which run is on screen, and as of when. Rendered once by {@link AppChrome} at the foot of every
@@ -28,6 +27,10 @@ import styles from "./Provenance.module.css";
  * It renders nothing while loading and nothing on error: a footer that cannot name the run is
  * better absent than shouting. The screens above already surface their own failures, and an error
  * card repeated under every one of them would say the same thing twice.
+ *
+ * Styled by the design system's global `as-*` classes rather than a module of its own — the
+ * duplicate rule set this replaced had drifted to `--motion-fast`, a variable no token file has
+ * ever declared.
  */
 export function ProvenanceStrip() {
   const state = useActiveModelRun();
@@ -39,7 +42,7 @@ export function ProvenanceStrip() {
   const details: Array<{ label: string; value: string }> = [
     {
       label: "Cửa sổ ước lượng",
-      value: `${formatDate(run.window_start)} – ${formatDate(run.window_end)}`,
+      value: `${formatSession(run.window_start)} – ${formatSession(run.window_end)}`,
     },
     { label: "Số phiên", value: formatInt(run.n_sessions) },
     { label: "τ", value: formatDecimal(run.tau) },
@@ -56,18 +59,18 @@ export function ProvenanceStrip() {
   ];
 
   return (
-    <section className={styles.provenance} aria-label="Thông tin dữ liệu">
-      <p className={styles.summary}>
+    <section className="as-provenance" aria-label="Thông tin dữ liệu">
+      <p className="as-provenance__summary">
         <span>
-          Dữ liệu đến <strong>{formatDate(run.latest_session)}</strong>
+          Dữ liệu đến <strong>{formatSession(run.latest_session)}</strong>
         </span>
-        <span aria-hidden="true" className={styles.dot}>
+        <span aria-hidden="true" className="as-provenance__dot">
           ·
         </span>
         <span>
           <strong>{formatInt(run.n_tickers)}</strong> mã
         </span>
-        <span aria-hidden="true" className={styles.dot}>
+        <span aria-hidden="true" className="as-provenance__dot">
           ·
         </span>
         <span>
@@ -75,13 +78,22 @@ export function ProvenanceStrip() {
         </span>
       </p>
 
-      <details className={styles.details}>
-        <summary className={styles.toggle}>Chi tiết mô hình</summary>
-        <div className={styles.items}>
+      {/* `.as-details` is the design system's bordered sunken card. Here the disclosure sits
+          inside a strip that already has its own rule above it, and a card nested in that would
+          be a border inside a border — the one thing the surface rules forbid. Stripping the
+          three properties in place is smaller than adding a second class for one use. */}
+      <details
+        className="as-details"
+        style={{ background: "transparent", border: "none", padding: 0 }}
+      >
+        <summary className="as-details__toggle">Chi tiết mô hình</summary>
+        <div className="as-provenance__items">
           {details.map((item) => (
-            <div key={item.label} className={styles.item}>
-              <span className={styles.label}>{item.label}</span>
-              <span className={styles.value}>{item.value}</span>
+            <div key={item.label} className="as-provenance__item">
+              {/* Not uppercased: these labels carry Greek, and `text-transform: uppercase`
+                  turns τ into Τ, which reads as a Latin T. */}
+              <span className="as-def-term">{item.label}</span>
+              <span className="as-def-value">{item.value}</span>
             </div>
           ))}
         </div>

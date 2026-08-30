@@ -1,0 +1,13 @@
+/* Anchor Stock design system — entry point. Import list only, không viết giá trị ở đây.
+   Đặt file này cùng cấp với tokens/ và components.css.
+   Trong Next.js: @import từ app/globals.css, hoặc import trực tiếp trong app/layout.tsx.
+   fonts.css nạp Roboto qua Google Fonts CDN — nếu đã dùng next/font thì BỎ dòng đó. */
+
+@import url("./tokens/colors.css");
+@import url("./tokens/typography.css");
+@import url("./tokens/spacing.css");
+@import url("./tokens/radius.css");
+@import url("./tokens/elevation.css");
+@import url("./tokens/motion.css");
+@import url("./tokens/base.css");
+@import url("./components.css");

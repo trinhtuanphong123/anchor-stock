@@ -1,46 +1,30 @@
 "use client";
 
+import { useState } from "react";
 import type { IndicatorPoint } from "@/lib/api";
-import { DASH, formatDate, formatDecimal, formatInt } from "@/components/market/format";
-import { ChartLegend, type LegendItem } from "./ChartLegend";
 import { ChartCrosshair, ChartTooltip, useChartHover, type TooltipRow } from "./ChartHover";
-import styles from "./CombinedIndicatorChart.module.css";
+import { axisDate, labelIndexes, priceTicks } from "./scale";
+import { DASH, formatDecimal, formatSession } from "@/components/market/format";
+import styles from "./charts.module.css";
+
+/** Fixed viewBox scaled by CSS; the price scale on the right, as everywhere else. */
+const VW = 900;
+const PAD_L = 8;
+const PAD_R = 64;
+const X0 = PAD_L;
+const X1 = VW - PAD_R;
 
 /**
- * "Biểu đồ kỹ thuật tổng hợp" — four panes sharing one time axis.
- *
- * Price (close, MA20, MA50, Bollinger band) · RSI with its 70/50/30 guides · MACD with its signal
- * and histogram · volume against its own 20-session average.
- *
- * Three rules this chart follows, all of them the same rule in different clothes:
- *
- *  1. **A null is a gap, never a zero.** Every series is drawn as contiguous runs of finite
- *     points, broken wherever a value is missing. `sma_200` is null for the first 199 sessions of
- *     any window and `rsi_14` for the first 14 — joining across those gaps would draw a line the
- *     data does not contain, and substituting 0 would draw a crash that never happened.
- *  2. **Each pane scales to its own finite values.** A pane whose series are entirely null renders
- *     its frame and nothing else rather than collapsing to a flat line at the bottom.
- *  3. **The x-positions come from the index, not the date.** Sessions are equally spaced, so a
- *     holiday does not stretch the axis, and every pane's column i is the same session.
- *
- * Hand-drawn SVG rather than a charting library (P10 S5): the primitives beside this file already
- * consume the design tokens and theme correctly in light and dark, which any library would have to
- * be restyled to do anyway.
+ * Two panes, and `/tickers` shows them one at a time: RSI is a different unit on a different
+ * scale, and in its own frame it stops competing with the price for the same vertical space.
  */
-
-const VW = 640;
-
-/** Pane geometry in viewBox units: [top, bottom] of each plot area. */
-const PANES = {
-  price: [8, 208],
-  rsi: [236, 296],
-  macd: [324, 384],
-  volume: [412, 462],
+const LAYOUT = {
+  both: { vh: 420, price: [14, 250], rsi: [292, 396] },
+  price: { vh: 320, price: [14, 282], rsi: null },
+  rsi: { vh: 200, price: null, rsi: [18, 162] },
 } as const;
 
-const VH = 500;
-const X0 = 44;
-const X1 = 634;
+export type IndicatorPane = keyof typeof LAYOUT;
 
 type Accessor = (p: IndicatorPoint) => number | null;
 
@@ -49,17 +33,22 @@ interface SeriesSpec {
   label: string;
   value: Accessor;
   color: string;
-  width?: number;
+  width: number;
   dash?: string;
 }
 
-const PRICE_SERIES: SeriesSpec[] = [
-  { key: "close", label: "Giá đóng cửa", value: (p) => p.close, color: "var(--accent)", width: 1.6 },
-  { key: "sma_20", label: "MA20", value: (p) => p.sma_20, color: "var(--chart-ma20)", width: 1.2 },
-  { key: "sma_50", label: "MA50", value: (p) => p.sma_50, color: "var(--chart-ma50)", width: 1.2 },
+/**
+ * The price pane's five series. **Colour here is identity, never direction** — these lines are
+ * five different quantities in one unit, so a red one would read as a falling price rather than
+ * as a lower band.
+ */
+const SERIES: SeriesSpec[] = [
+  { key: "close", label: "Giá đóng cửa", value: (p) => p.close, color: "var(--text-1)", width: 1.5 },
+  { key: "sma_20", label: "SMA 20", value: (p) => p.sma_20, color: "var(--chart-ma20)", width: 1.25 },
+  { key: "sma_50", label: "SMA 50", value: (p) => p.sma_50, color: "var(--chart-ma50)", width: 1.25 },
   {
     key: "bb_upper_20",
-    label: "Bollinger",
+    label: "Bollinger trên",
     value: (p) => p.bb_upper_20,
     color: "var(--chart-band)",
     width: 1,
@@ -67,22 +56,11 @@ const PRICE_SERIES: SeriesSpec[] = [
   },
   {
     key: "bb_lower_20",
-    label: "",
+    label: "Bollinger dưới",
     value: (p) => p.bb_lower_20,
     color: "var(--chart-band)",
     width: 1,
     dash: "3 3",
-  },
-];
-
-const MACD_SERIES: SeriesSpec[] = [
-  { key: "macd", label: "MACD", value: (p) => p.macd, color: "var(--accent)", width: 1.3 },
-  {
-    key: "macd_signal",
-    label: "Signal",
-    value: (p) => p.macd_signal,
-    color: "var(--chart-ma50)",
-    width: 1.1,
   },
 ];
 
@@ -92,9 +70,8 @@ function runsOf(points: IndicatorPoint[], value: Accessor): Array<Array<{ i: num
   let run: Array<{ i: number; v: number }> = [];
   points.forEach((p, i) => {
     const v = value(p);
-    if (v !== null && Number.isFinite(v)) {
-      run.push({ i, v });
-    } else if (run.length > 0) {
+    if (v !== null && Number.isFinite(v)) run.push({ i, v });
+    else if (run.length > 0) {
       runs.push(run);
       run = [];
     }
@@ -103,364 +80,253 @@ function runsOf(points: IndicatorPoint[], value: Accessor): Array<Array<{ i: num
   return runs;
 }
 
-/** Finite min/max across several accessors, or null when every value is missing. */
-function extentOf(
-  points: IndicatorPoint[],
-  accessors: Accessor[],
-): { min: number; max: number } | null {
-  let min = Infinity;
-  let max = -Infinity;
-  for (const p of points) {
-    for (const a of accessors) {
-      const v = a(p);
-      if (v !== null && Number.isFinite(v)) {
-        if (v < min) min = v;
-        if (v > max) max = v;
-      }
-    }
-  }
-  if (min === Infinity) return null;
-  if (min === max) {
-    // A flat series still needs a band to sit in, or it divides by zero below.
-    const pad = Math.abs(min) * 0.05 || 1;
-    return { min: min - pad, max: max + pad };
-  }
-  return { min, max };
-}
-
-const fmt = (v: number, digits = 2): string =>
-  v.toLocaleString("vi-VN", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-
+/**
+ * Price with its moving averages and Bollinger band over an RSI pane — or either pane alone.
+ *
+ * Three rules, the same rule in different clothes:
+ *
+ *  1. **A null is a gap, never a zero.** `sma_50` is null for the first 49 sessions of any window
+ *     and `rsi_14` for the first 14. Joining across those gaps would draw a line the data does not
+ *     contain; substituting 0 would draw a crash that never happened.
+ *  2. **The x-positions come from the index, not the date.** Sessions are equally spaced, so a
+ *     holiday does not stretch the axis and column i is the same session in both panes.
+ *  3. **The scale follows what is DRAWN.** Isolating one series rescales the pane to it, because
+ *     a lone SMA 20 in a band sized for the Bollinger envelope is a flat line saying nothing.
+ *
+ * The legend is the control surface: click a series to isolate it, click again to restore the
+ * five. That is the only interaction on this screen, and it reads nothing and writes nothing.
+ */
 export function CombinedIndicatorChart({
-  id,
   points,
+  pane = "both",
+  longRange = false,
   ticker,
 }: {
-  id: string;
   points: IndicatorPoint[];
-  ticker: string;
+  pane?: IndicatorPane;
+  longRange?: boolean;
+  ticker?: string;
 }) {
+  const [isolated, setIsolated] = useState<string | null>(null);
+  const L = LAYOUT[pane];
   const n = points.length;
 
-  // Before the guard: hooks cannot sit behind an early return.
   const hover = useChartHover({
     count: n,
     x0: X0,
     x1: X1,
     vw: VW,
-    vh: VH,
+    vh: L.vh,
     panes: [
-      { key: "price", top: PANES.price[0], bottom: PANES.price[1] },
-      { key: "rsi", top: PANES.rsi[0], bottom: PANES.rsi[1] },
-      { key: "macd", top: PANES.macd[0], bottom: PANES.macd[1] },
-      { key: "volume", top: PANES.volume[0], bottom: PANES.volume[1] },
+      ...(L.price ? [{ key: "price", top: L.price[0], bottom: L.price[1] }] : []),
+      ...(L.rsi ? [{ key: "rsi", top: L.rsi[0], bottom: L.rsi[1] }] : []),
     ],
   });
 
-  if (n === 0) return null;
+  if (n < 2) return null;
 
-  const xFor = (i: number): number =>
-    n <= 1 ? (X0 + X1) / 2 : X0 + (i / (n - 1)) * (X1 - X0);
+  const shown = SERIES.filter((s) => isolated === null || s.key === isolated);
 
-  /** Build a y-mapper for one pane, or null when the pane has nothing finite to draw. */
-  const scaleFor = (
-    pane: readonly [number, number],
-    accessors: Accessor[],
-    forced?: { min: number; max: number },
-  ) => {
-    const ext = forced ?? extentOf(points, accessors);
-    if (!ext) return null;
-    const [top, bottom] = pane;
-    return (v: number) => bottom - ((v - ext.min) / (ext.max - ext.min)) * (bottom - top);
-  };
+  // Rule 3: the price band is scaled by the series actually on the plot.
+  const values: number[] = [];
+  if (L.price !== null) {
+    for (const p of points) {
+      for (const s of shown) {
+        const v = s.value(p);
+        if (v !== null && Number.isFinite(v)) values.push(v);
+      }
+    }
+  }
+  const hasPrice = L.price !== null && values.length >= 2;
+  let lo = hasPrice ? Math.min(...values) : 0;
+  let hi = hasPrice ? Math.max(...values) : 1;
+  const pad = Math.max((hi - lo) * 0.07, 0.01);
+  lo -= pad;
+  hi += pad;
 
-  const priceY = scaleFor(PANES.price, PRICE_SERIES.map((s) => s.value));
-  const priceExt = extentOf(points, PRICE_SERIES.map((s) => s.value));
+  const xAt = (i: number): number => X0 + (i / (n - 1)) * (X1 - X0);
+  const yAt = (v: number): number =>
+    L.price === null ? 0 : L.price[1] - ((v - lo) / (hi - lo)) * (L.price[1] - L.price[0]);
   // RSI is bounded [0,100] by definition, so its axis is fixed rather than data-driven — the
-  // 70/30 guides are only meaningful against a fixed scale.
-  const rsiY = scaleFor(PANES.rsi, [(p) => p.rsi_14], { min: 0, max: 100 });
-  const macdY = scaleFor(PANES.macd, [
-    ...MACD_SERIES.map((s) => s.value),
-    (p) => p.macd_hist,
-  ]);
-  const macdExt = extentOf(points, [...MACD_SERIES.map((s) => s.value), (p) => p.macd_hist]);
-  const volExt = extentOf(points, [(p) => p.volume, (p) => p.volume_sma_20]);
+  // 70/30 rules are only meaningful against a fixed scale.
+  const rAt = (v: number): number =>
+    L.rsi === null ? 0 : L.rsi[1] - (v / 100) * (L.rsi[1] - L.rsi[0]);
 
-  const path = (runs: Array<Array<{ i: number; v: number }>>, y: (v: number) => number): string =>
-    runs
+  const path = (value: Accessor, y: (v: number) => number): string =>
+    runsOf(points, value)
       .filter((r) => r.length >= 2)
-      .map(
-        (r) =>
-          "M " +
-          r.map((p) => `${xFor(p.i).toFixed(2)},${y(p.v).toFixed(2)}`).join(" L "),
-      )
+      .map((r) => `M${r.map((p) => `${xAt(p.i).toFixed(2)} ${y(p.v).toFixed(2)}`).join(" L")}`)
       .join(" ");
 
-  const first = formatDate(points[0].bar_date);
-  const last = formatDate(points[n - 1].bar_date);
+  // The Bollinger envelope as a filled ribbon, drawn only with the full set on the plot: once a
+  // single series is isolated the ribbon is no longer what the pane is about.
+  const band = ((): string => {
+    if (L.price === null || isolated !== null) return "";
+    const upper: string[] = [];
+    const lower: string[] = [];
+    points.forEach((p, i) => {
+      const u = p.bb_upper_20;
+      const d = p.bb_lower_20;
+      if (u !== null && d !== null && Number.isFinite(u) && Number.isFinite(d)) {
+        upper.push(`${xAt(i).toFixed(2)} ${yAt(u).toFixed(2)}`);
+        lower.unshift(`${xAt(i).toFixed(2)} ${yAt(d).toFixed(2)}`);
+      }
+    });
+    return upper.length > 1 ? `M${upper.join(" L")} L${lower.join(" L")} Z` : "";
+  })();
 
-  const legend: LegendItem[] = [
-    ...PRICE_SERIES.filter((s) => s.label !== "").map((s) => ({
-      label: s.label,
-      color: s.color,
-      variant: "line" as const,
-    })),
-    { label: "RSI(14)", color: "var(--chart-rsi)", variant: "line" as const },
-    { label: "MACD", color: "var(--accent)", variant: "line" as const },
-    { label: "Khối lượng", color: "var(--data-neutral)", variant: "solid" as const },
-  ];
+  const hovered = hover.index === null ? null : points[hover.index];
+  const hoveredBand: Array<readonly [number, number]> =
+    hover.pane === "rsi" && L.rsi !== null
+      ? [[L.rsi[0], L.rsi[1]]]
+      : L.price !== null
+        ? [[L.price[0], L.price[1]]]
+        : [];
 
-  const barW = Math.max(0.5, Math.min(5, ((X1 - X0) / n) * 0.7));
-  const [volTop, volBottom] = PANES.volume;
-
-  // --- Hover readout -------------------------------------------------------
-  // Rule 3 guarantees column i is the same session in every pane, but the readout belongs to the
-  // pane under the cursor only — a crosshair spanning all four panes read as the pane below being
-  // "synced" to the one hovered. `num` keeps rule 1 intact at the readout: a null is a dash,
-  // never a zero and never the previous session's value carried forward.
-  const hp = hover.index !== null ? points[hover.index] : null;
   const num = (v: number | null | undefined, digits = 2): string =>
     v === null || v === undefined || !Number.isFinite(v) ? DASH : formatDecimal(v, digits);
 
-  const pane = hover.pane;
-
-  const hoverRows: TooltipRow[] =
-    hp === null || pane === ""
+  const rows: TooltipRow[] =
+    hovered === null
       ? []
+      : hover.pane === "rsi"
+        ? [{ label: "RSI 14", value: num(hovered.rsi_14, 1), color: "var(--chart-rsi)" }]
+        : shown.map((s) => ({
+            label: s.label,
+            value: num(s.value(hovered)),
+            color: s.color,
+          }));
+
+  const label =
+    pane === "rsi"
+      ? `RSI 14 qua ${n} phiên`
       : pane === "price"
-        ? [
-            { label: "Giá đóng cửa", value: num(hp.close), color: "var(--accent)" },
-            { label: "MA20", value: num(hp.sma_20), color: "var(--chart-ma20)" },
-            { label: "MA50", value: num(hp.sma_50), color: "var(--chart-ma50)" },
-            { label: "BB trên", value: num(hp.bb_upper_20), color: "var(--chart-band)" },
-            { label: "BB dưới", value: num(hp.bb_lower_20), color: "var(--chart-band)" },
-          ]
-        : pane === "rsi"
-          ? [
-              { label: "RSI(14)", value: num(hp.rsi_14, 1), color: "var(--chart-rsi)" },
-            ]
-          : pane === "macd"
-            ? [
-                { label: "MACD", value: num(hp.macd, 3), color: "var(--accent)" },
-                { label: "Signal", value: num(hp.macd_signal, 3), color: "var(--chart-ma50)" },
-                { label: "Histogram", value: num(hp.macd_hist, 3) },
-              ]
-            : [
-                {
-                  label: "Khối lượng",
-                  value: hp.volume === null || !Number.isFinite(hp.volume)
-                    ? DASH
-                    : formatInt(hp.volume),
-                  color: "var(--data-neutral)",
-                },
-              ];
-
-  /** Dot for the hovered pane's series, when it has a value at the hovered session. */
-  const hoverDot =
-    hp === null
-      ? null
-      : pane === "price" && priceY && hp.close !== null && Number.isFinite(hp.close)
-        ? { y: priceY(hp.close), color: "var(--accent)" }
-        : pane === "rsi" && rsiY && hp.rsi_14 !== null && Number.isFinite(hp.rsi_14)
-          ? { y: rsiY(hp.rsi_14), color: "var(--chart-rsi)" }
-          : pane === "macd" && macdY && hp.macd !== null && Number.isFinite(hp.macd)
-            ? { y: macdY(hp.macd), color: "var(--accent)" }
-            : null;
-
-  // The hovered pane's band, for the crosshair. `pane` is never null when `panes` is non-empty.
-  const crossSegments =
-    pane === "price"
-      ? [PANES.price]
-      : pane === "rsi"
-        ? [PANES.rsi]
-        : pane === "macd"
-          ? [PANES.macd]
-          : pane === "volume"
-            ? [PANES.volume]
-            : [];
+        ? `Giá và đường trung bình qua ${n} phiên`
+        : `Giá, đường trung bình và RSI qua ${n} phiên`;
+  const named = ticker ? `${ticker} — ${label}` : label;
+  const toggle = (key: string): void => setIsolated((cur) => (cur === key ? null : key));
 
   return (
-    <div className={styles.wrap}>
-      <ChartLegend items={legend} />
-
-      <div
-        {...hover.surfaceProps}
-        aria-label={`${ticker} — biểu đồ kỹ thuật tổng hợp. Dùng phím mũi tên để đọc từng phiên.`}
-      >
-      <svg
-        className={styles.svg}
-        viewBox={`0 0 ${VW} ${VH}`}
-        role="img"
-        aria-labelledby={`${id}-title`}
-      >
-        <title id={`${id}-title`}>
-          {`${ticker} — biểu đồ kỹ thuật tổng hợp qua ${n} phiên, từ ${first} đến ${last}`}
-        </title>
-
-        {/* --- Price pane --- */}
-        <PaneFrame label="Giá" top={PANES.price[0]} bottom={PANES.price[1]} />
-        {priceExt && priceY && (
-          <>
-            <AxisValue y={PANES.price[0] + 9} text={fmt(priceExt.max)} />
-            <AxisValue y={PANES.price[1] - 2} text={fmt(priceExt.min)} />
-            {PRICE_SERIES.map((s) => (
-              <path
-                key={s.key}
-                d={path(runsOf(points, s.value), priceY)}
-                fill="none"
-                stroke={s.color}
-                strokeWidth={s.width ?? 1.2}
-                strokeDasharray={s.dash}
-                className={styles.line}
-              />
-            ))}
-          </>
-        )}
-
-        {/* --- RSI pane. The 70/50/30 lines are conventional reading levels, not thresholds
-                this system computed — drawn as guides, labelled with their numbers only. --- */}
-        <PaneFrame label="RSI(14)" top={PANES.rsi[0]} bottom={PANES.rsi[1]} />
-        {rsiY && (
-          <>
-            {[70, 50, 30].map((level) => (
-              <g key={level}>
-                <line
-                  x1={X0}
-                  y1={rsiY(level)}
-                  x2={X1}
-                  y2={rsiY(level)}
-                  className={level === 50 ? styles.guideFaint : styles.guide}
-                />
-                <text x={X0 - 6} y={rsiY(level) + 3} className={styles.axisValue} textAnchor="end">
-                  {level}
+    <div className={styles.stack}>
+      <div {...hover.surfaceProps} aria-label={`${named}. Dùng phím mũi tên để đọc từng phiên.`}>
+        <svg className="as-chart-svg" viewBox={`0 0 ${VW} ${L.vh}`} role="img" aria-label={named}>
+          {hasPrice &&
+            priceTicks(lo, hi, 4).map((v) => (
+              <g key={v}>
+                <line x1={X0} y1={yAt(v)} x2={X1} y2={yAt(v)} className="as-chart-grid" />
+                <text x={X1 + 8} y={yAt(v) + 4} className="as-chart-tick as-chart-tick--right">
+                  {formatDecimal(v, 2)}
                 </text>
               </g>
             ))}
-            <path
-              d={path(runsOf(points, (p) => p.rsi_14), rsiY)}
-              fill="none"
-              stroke="var(--chart-rsi)"
-              strokeWidth={1.3}
-              className={styles.line}
-            />
-          </>
-        )}
 
-        {/* --- MACD pane --- */}
-        <PaneFrame label="MACD" top={PANES.macd[0]} bottom={PANES.macd[1]} />
-        {macdY && macdExt && (
-          <>
-            <AxisValue y={PANES.macd[0] + 9} text={fmt(macdExt.max)} />
-            <AxisValue y={PANES.macd[1] - 2} text={fmt(macdExt.min)} />
-            {/* Histogram bars hang from the zero line; a null histogram draws no bar at all. */}
-            {points.map((p, i) => {
-              const h = p.macd_hist;
-              if (h === null || !Number.isFinite(h)) return null;
-              const zero = macdY(0);
-              const y = macdY(h);
-              return (
-                <rect
-                  key={`mh-${i}`}
-                  x={xFor(i) - barW / 2}
-                  y={Math.min(zero, y)}
-                  width={barW}
-                  height={Math.abs(zero - y)}
-                  fill={h >= 0 ? "var(--data-pos)" : "var(--data-neg)"}
-                  opacity={0.45}
+          {band !== "" && <path d={band} fill="var(--chart-band)" opacity="0.1" stroke="none" />}
+
+          {hasPrice &&
+            // Reversed so the close, first in the legend, is drawn last and sits on top.
+            shown
+              .slice()
+              .reverse()
+              .map((s) => (
+                <path
+                  key={s.key}
+                  d={path(s.value, yAt)}
+                  fill="none"
+                  stroke={s.color}
+                  strokeWidth={s.width}
+                  strokeDasharray={s.dash}
+                  opacity={s.dash ? 0.7 : 1}
+                  vectorEffect="non-scaling-stroke"
+                  className="as-chart-series"
+                  onClick={() => toggle(s.key)}
                 />
-              );
-            })}
-            <line x1={X0} y1={macdY(0)} x2={X1} y2={macdY(0)} className={styles.guideFaint} />
-            {MACD_SERIES.map((s) => (
+              ))}
+
+          {L.rsi !== null && (
+            <>
+              {[70, 30].map((level) => (
+                <g key={level}>
+                  <line
+                    x1={X0}
+                    y1={rAt(level)}
+                    x2={X1}
+                    y2={rAt(level)}
+                    className="as-chart-grid"
+                    strokeDasharray="2 4"
+                  />
+                  <text
+                    x={X1 + 8}
+                    y={rAt(level) + 4}
+                    className="as-chart-tick as-chart-tick--right"
+                  >
+                    {level}
+                  </text>
+                </g>
+              ))}
               <path
-                key={s.key}
-                d={path(runsOf(points, s.value), macdY)}
+                d={path((p) => p.rsi_14, rAt)}
                 fill="none"
-                stroke={s.color}
-                strokeWidth={s.width ?? 1.2}
-                className={styles.line}
+                stroke="var(--chart-rsi)"
+                strokeWidth={1.25}
+                vectorEffect="non-scaling-stroke"
               />
-            ))}
-          </>
-        )}
+              {/* The bands are a market convention, not a threshold this system computed, and the
+                  label says so — the number itself is not a verdict. */}
+              <text x={X0} y={L.rsi[0] - 8} className="as-chart-tick">
+                RSI 14 · dải 70/30 là quy ước thị trường
+              </text>
+            </>
+          )}
 
-        {/* --- Volume pane --- */}
-        <PaneFrame label="KL" top={PANES.volume[0]} bottom={PANES.volume[1]} />
-        {volExt && (
-          <>
-            {points.map((p, i) => {
-              const v = p.volume;
-              if (v === null || !Number.isFinite(v)) return null;
-              const h = (v / volExt.max) * (volBottom - volTop);
-              return (
-                <rect
-                  key={`vol-${i}`}
-                  x={xFor(i) - barW / 2}
-                  y={volBottom - h}
-                  width={barW}
-                  height={h}
-                  className={styles.volBar}
-                />
-              );
-            })}
-            <path
-              d={path(
-                runsOf(points, (p) => p.volume_sma_20),
-                (v) => volBottom - (v / volExt.max) * (volBottom - volTop),
-              )}
-              fill="none"
-              stroke="var(--chart-ma20)"
-              strokeWidth={1.1}
-              className={styles.line}
-            />
-          </>
-        )}
+          {labelIndexes(n, 6).map((i) => (
+            <text
+              key={i}
+              x={Math.min(Math.max(xAt(i), X0 + 16), X1 - 16)}
+              y={L.vh - 4}
+              className="as-chart-tick as-chart-tick--mid"
+            >
+              {axisDate(points[i].bar_date ?? "", longRange)}
+            </text>
+          ))}
 
-        <text x={X0} y={VH - 6} className={styles.axisValue}>
-          {first}
-        </text>
-        <text x={X1} y={VH - 6} className={styles.axisValue} textAnchor="end">
-          {last}
-        </text>
+          {hovered && hover.index !== null && (
+            <ChartCrosshair x={xAt(hover.index)} segments={hoveredBand} />
+          )}
+        </svg>
 
-        {hp && (
-          <ChartCrosshair
-            x={xFor(hover.index as number)}
-            segments={crossSegments}
-            dots={hoverDot ? [hoverDot] : undefined}
-          />
-        )}
-      </svg>
-
-        {hp && (
+        {hovered && hover.index !== null && (
           <ChartTooltip
-            left={hover.fracAt(hover.index as number)}
-            top={crossSegments.length > 0 ? crossSegments[0][0] / VH : 0}
-            title={formatDate(hp.bar_date)}
-            rows={hoverRows}
+            left={hover.fracAt(hover.index)}
+            title={formatSession(hovered.bar_date)}
+            rows={rows}
           />
         )}
       </div>
+
+      {L.price !== null && (
+        <ul className="as-legend">
+          {SERIES.map((s) => (
+            <li key={s.key}>
+              <button
+                type="button"
+                aria-pressed={isolated === s.key}
+                onClick={() => toggle(s.key)}
+                className={`as-legend__item as-legend__btn${
+                  isolated !== null && isolated !== s.key ? " as-legend__btn--off" : ""
+                }`}
+              >
+                <span className="as-legend__swatch" style={{ background: s.color }} />
+                <span className="as-legend__label">{s.label}</span>
+              </button>
+            </li>
+          ))}
+          <li>
+            <span className="as-legend__hint">
+              {isolated !== null ? "Bấm lại để hiện tất cả" : "Bấm một đường để xem riêng"}
+            </span>
+          </li>
+        </ul>
+      )}
     </div>
-  );
-}
-
-function PaneFrame({ label, top, bottom }: { label: string; top: number; bottom: number }) {
-  return (
-    <g>
-      <line x1={X0} y1={top} x2={X1} y2={top} className={styles.guideFaint} />
-      <line x1={X0} y1={bottom} x2={X1} y2={bottom} className={styles.axis} />
-      <text x={X0} y={top - 5} className={styles.paneLabel}>
-        {label}
-      </text>
-    </g>
-  );
-}
-
-function AxisValue({ y, text }: { y: number; text: string }) {
-  return (
-    <text x={X0 - 6} y={y} className={styles.axisValue} textAnchor="end">
-      {text}
-    </text>
   );
 }

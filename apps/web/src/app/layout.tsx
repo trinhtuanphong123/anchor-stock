@@ -11,10 +11,6 @@ import AppChrome from "@/components/AppChrome";
  * changing that scale would load a face nothing uses; asking a role for a weight NOT listed here
  * would get a browser-synthesised faux-bold instead of a refusal, which is the failure mode
  * worth naming because it looks like a rendering bug rather than a missing font.
- *
- * The serif face is gone with Strata. `--font-serif` now aliases the sans stack in §1, so the
- * two prose roles still resolve — this package has no long-form prose left on the market screen
- * anyway, and shipping a third family for the two paragraphs on /about is not worth the request.
  */
 const roboto = Roboto({
   subsets: ["latin", "vietnamese"],
@@ -35,7 +31,7 @@ const robotoMono = Roboto_Mono({
 // method, in the one field that is a product description. The disclaimer stays: it is a claim
 // about what this is NOT, which docs/02 §4 requires and which no reader should have to look for.
 export const metadata: Metadata = {
-  title: "Anchor Model — Điểm neo đại diện thị trường cổ phiếu Việt Nam",
+  title: "Anchor Stock — Điểm neo đại diện thị trường cổ phiếu Việt Nam",
   description:
     "Theo dõi 85 cổ phiếu HOSE và 10 mã điểm neo đại diện: diễn biến phiên, biểu đồ kỹ thuật và nhóm cổ phiếu vận động cùng nhau. Không dự báo, không khuyến nghị đầu tư.",
 };

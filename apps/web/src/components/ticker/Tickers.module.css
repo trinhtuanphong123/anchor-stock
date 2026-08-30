@@ -1,0 +1,56 @@
+/* =============================================================================
+   /tickers — the only things the design system cannot say about this screen: how its blocks
+   stack, and how the coverage orbit divides its panel.
+
+   The density here is LOOSER than the market board's on purpose. `/tickers` is a document — one
+   ticker read top to bottom — not a dashboard scanned for outliers. The two screens share the
+   token layer and disagree about density deliberately; do not "unify" them.
+
+   Rule inherited from the token layer: only var(--*), never a literal value.
+   ============================================================================= */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-section);
+  padding-block: var(--space-6) var(--space-10);
+}
+
+/* The picker sits above the detail and stays there while a ticker is open — changing ticker is
+   one click, not a trip back to a list. */
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-stack);
+}
+
+/* Four chart frames read as one block, closer to each other than to the sections around them. */
+.charts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* The orbit is the subject of its panel and the prose is its caption, so the split is uneven.
+   Both columns are min-width: 0 so the SVG can shrink rather than push the text out. */
+.group {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: var(--space-7);
+  align-items: center;
+}
+
+.groupText {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-stack);
+  min-width: 0;
+}
+
+/* Desktop only this pass. This breakpoint exists so the orbit and its caption stack rather than
+   crush each other below the width the ratio was chosen at — not to serve a phone. */
+@media (max-width: 1080px) {
+  .group {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

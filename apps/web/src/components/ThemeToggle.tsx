@@ -8,7 +8,7 @@ type Theme = "dark" | "light";
 const STORAGE_KEY = "theme";
 
 /**
- * Light/dark switch.
+ * Light/dark switch. Both modes are complete — dark is not an afterthought here.
  *
  * Light is the default (P11 S2) and the choice is persisted, which is the whole fix for
  * "choosing light on one page and getting dark on the next": the App Router keeps `<html>` alive
@@ -18,6 +18,10 @@ const STORAGE_KEY = "theme";
  * The initial state must match the server-rendered markup (`data-theme="light"`) or React logs a
  * hydration mismatch; the effect below reads what the pre-paint script actually stamped and
  * corrects the button's label after mount.
+ *
+ * The label is a word, not an icon: the product ships no icon set, and adding one for a single
+ * control would be inventing a vocabulary the rest of the screen does not speak. It names the
+ * mode the press moves to, so the button says what it does rather than where it is.
  */
 export default function ThemeToggle() {
   const [theme, setTheme] = useState<Theme>("light");
@@ -42,11 +46,11 @@ export default function ThemeToggle() {
   return (
     <button
       type="button"
-      className="theme-toggle"
+      className="as-theme-toggle"
       onClick={toggle}
-      aria-label={`Chuyển sang giao diện ${theme === "dark" ? "sáng" : "tối"}`}
+      aria-label={theme === "dark" ? "Chuyển sang nền sáng" : "Chuyển sang nền tối"}
     >
-      {theme === "dark" ? "Sáng" : "Tối"}
+      {theme === "dark" ? "Nền sáng" : "Nền tối"}
     </button>
   );
 }

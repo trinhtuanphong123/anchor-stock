@@ -6,7 +6,12 @@ import ProvenanceStrip from "./ProvenanceStrip";
 import ThemeToggle from "./ThemeToggle";
 
 /**
- * Application shell.
+ * Application shell, built from the design system's global `as-*` classes.
+ *
+ * The shell owns no CSS Module of its own any more: its form — the sticky two-row header, the
+ * tab bar, the centred content well — is the design system's, and duplicating those rules under
+ * a second set of names is what made the previous palette change a component-by-component edit.
+ * CSS Modules stay for screen-local layout; the frame is shared.
  *
  * P8 reduced the navigation to the one route that existed; P10 builds the rest against the
  * anchor-model contract. Two of the Leiden-era routes never come back: `/pipeline` lost its
@@ -45,22 +50,26 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="app-shell">
+    <div className="as-shell">
       {/* Two rows, sticky as a unit (P11 S-layout). The sidebar this replaces held four links and
           then ~700px of empty column; navigation across the top gives that width back to the
           content, which is where the charts and tables need it. */}
-      <header className="app-header" role="banner">
-        <div className="app-header__top">
-          <div className="app-header__brand">
-            <span className="app-header__wordmark">Anchor Model</span>
-            <span className="app-header__eyebrow">{meta.eyebrow}</span>
+      <header className="as-header" role="banner">
+        <div className="as-header__top">
+          <div className="as-header__brand">
+            {/* The product has no logo mark. The brand is this word, set in Roboto Medium. */}
+            <span className="as-wordmark">Anchor Stock</span>
+            <span className="as-eyebrow">{meta.eyebrow}</span>
           </div>
-          <div className="app-header__actions">
+          <div className="as-header__actions">
             <ThemeToggle />
           </div>
         </div>
 
-        <nav className="tabbar" aria-label="Primary">
+        {/* Links rather than the design system's buttons: these are real routes, and a button
+            would cost middle-click, copy-link and the browser's own history. `.as-navtab` styles
+            either element. */}
+        <nav className="as-tabbar" aria-label="Primary">
           {NAV_ITEMS.map(({ href, label }) => {
             const isActive =
               href === "/" ? normalized === "/" : normalized.startsWith(href);
@@ -68,7 +77,7 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
               <Link
                 key={href}
                 href={href}
-                className={`tab${isActive ? " tab--active" : ""}`}
+                className={`as-navtab${isActive ? " as-navtab--active" : ""}`}
                 aria-current={isActive ? "page" : undefined}
               >
                 {label}
@@ -78,11 +87,11 @@ export default function AppChrome({ children }: { children: React.ReactNode }) {
         </nav>
       </header>
 
-      <main className="content-well" id="main-content">
+      <main className="as-well" id="main-content">
         {/* The page title left the header with the sidebar: repeating it beside a tab bar that
             already names the current screen said the same thing twice. It stays an <h1>, one per
             page, now at the head of the content it titles. */}
-        <h1 className="page-heading">{meta.title}</h1>
+        <h1 className="as-page-heading">{meta.title}</h1>
 
         {children}
         {/* docs/04 §5 requires the active run's universe and as-of date on screen. Rendered

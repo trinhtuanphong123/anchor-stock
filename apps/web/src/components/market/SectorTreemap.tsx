@@ -3,72 +3,101 @@
 import { useEffect, useRef, useState } from "react";
 import type { MarketSectorsResponse, SectorRow } from "@/lib/api";
 import type { ResourceState } from "@/hooks/dashboard";
+import { Panel } from "@/components/ds";
 import { EmptyState, ErrorState, LoadingState } from "@/components/states";
 import { squarify } from "@/components/charts/treemap";
 import { ChartTooltip } from "@/components/charts/ChartHover";
-import panel from "./MarketHome.module.css";
-import styles from "./Market.module.css";
-import { DASH, formatInt, formatPercent, formatTurnoverTy } from "./format";
+import { DASH, formatBillion, formatInt, formatPercent } from "./format";
 
 /**
- * The treemap's coordinate space is its MEASURED pixel box, not a fixed viewBox.
+ * The treemap is THE EXCEPTION to this package's fixed-viewBox rule, and deliberately so.
  *
- * Every other chart here uses a fixed viewBox scaled by CSS, and that is right for them: a line
- * chart has a shape it wants to keep. A treemap has no intrinsic aspect ratio — it fills a
- * rectangle by construction — and a fixed one left it 90px short of the chart panel beside it in
- * the 1.72:1 split, with dead space under the tiles. Measuring instead makes it fill the panel at
- * every width, and has a second effect worth naming: viewBox units are now CSS pixels, so the
- * label tiers below compare tile size against font size directly rather than through a scale
- * factor that had to be tracked separately.
+ * Every other chart here uses a fixed `viewBox` scaled by CSS, which is right for them: a line
+ * chart has a shape it wants to keep. A treemap has no intrinsic aspect ratio — it fills whatever
+ * rectangle it is given by construction — and a fixed one left it 90px short of the chart panel
+ * beside it in the 1.72 : 1 split, with dead space under the tiles. Measuring the real pixel box
+ * makes it fill the panel at every width, and has a second effect that the tier table below
+ * depends on: viewBox units ARE CSS pixels, so a tile's size can be compared against a FONT SIZE
+ * directly rather than through a scale factor nothing was tracking.
  *
- * The fallback box is used for the single frame before the ResizeObserver reports, and whenever
- * the element is unmeasurable (jsdom, a display:none ancestor).
+ * The fallback box covers the single frame before the ResizeObserver reports, and any environment
+ * where the element is unmeasurable (jsdom, a `display: none` ancestor).
  */
 const FALLBACK_W = 640;
 const FALLBACK_H = 360;
 
-/** Where the colour ramp saturates: ±3% in a session is already a strong move on HOSE. */
-const FULL_SCALE = 0.03;
+/**
+ * Where the colour ramp saturates: a SECTOR MEAN of ±0.9% in one session.
+ *
+ * Not the ±3% that would be right for a single ticker. This colours an average over every member
+ * of a sector, and averages of twenty names do not travel 3% in a day — scaling to a single
+ * stock's range would leave every tile in the palest step on all but the most violent sessions.
+ */
+const FULL_SCALE = 0.009;
 
 /**
- * What a tile is big enough to say, in **rendered pixels** — which, since the viewBox is now the
- * measured box, is also what the tile geometry is in.
+ * Four saturated steps per direction, rather than a wash of one hue across the panel. The weakest
+ * step is still a legible tint and the strongest is the -700 ink; only the top two are dark
+ * enough to carry white labels, which is what `isDeep` below decides.
+ */
+const RAMP = {
+  pos: ["var(--pos-500)", "var(--pos-600)", "var(--pos-700)", "color-mix(in srgb, var(--pos-700) 88%, black)"],
+  neg: ["var(--neg-500)", "var(--neg-600)", "var(--neg-700)", "color-mix(in srgb, var(--neg-700) 88%, black)"],
+} as const;
+
+/**
+ * What a tile is big enough to SAY, in rendered pixels — which, since the viewBox is the measured
+ * box, is also what the tile geometry is in.
  *
- * The predecessor to this table gated on viewBox width alone (`MIN_LABEL_W = 54`), which asked
- * whether the tile was wide, never whether the label fitted. "Bất động sản và Xây dựng" at 13px
- * is ~150px wide; in a 55px tile it overhung by ~100 and was then half-painted-over by the next
- * tile's rect, so it read as a label belonging to the wrong sector. Tiers plus the
- * `overflow: hidden` on each label box replace that guess with a rule.
+ * The predecessor to this table gated on width alone, which asked whether the tile was wide and
+ * never whether the label fitted. "Bất động sản và Xây dựng" at 14px is ~150px; in a 55px tile it
+ * overhung by ~100 and was then half-painted-over by the next tile, so it read as a label
+ * belonging to the wrong sector. Tiers plus `overflow: hidden` on each label box replace that
+ * guess with a rule. Below the last tier a tile carries only its ±%, and its name lives in the
+ * tooltip.
  */
 const TIERS = [
-  { minW: 140, minH: 64, name: 14, pct: 13, lines: 2 },
-  { minW: 80, minH: 44, name: 12, pct: 12, lines: 1 },
-  { minW: 48, minH: 26, name: 0, pct: 11, lines: 0 },
+  { minW: 132, minH: 58, name: 14, pct: 13, lines: 2, pad: "6px 8px" },
+  { minW: 84, minH: 40, name: 11.5, pct: 12, lines: 2, pad: "5px 6px" },
+  { minW: 52, minH: 28, name: 9.5, pct: 10.5, lines: 3, pad: "3px 4px" },
+  { minW: 38, minH: 18, name: 0, pct: 10, lines: 0, pad: "2px 3px" },
 ] as const;
 
-type Tier = (typeof TIERS)[number] | null;
+type Tier = (typeof TIERS)[number];
 
-function tierFor(wPx: number, hPx: number): Tier {
+function tierFor(wPx: number, hPx: number): Tier | null {
   return TIERS.find((t) => wPx >= t.minW && hPx >= t.minH) ?? null;
+}
+
+/** A mean with a direction to colour: measured, finite, and not exactly zero. */
+function directional(mean: number | null): mean is number {
+  return mean !== null && Number.isFinite(mean) && mean !== 0;
+}
+
+/** Ramp step 0–3 for a directional mean. */
+function tileLevel(mean: number): number {
+  const t = Math.min(1, Math.abs(mean) / FULL_SCALE);
+  return t < 0.3 ? 0 : t < 0.6 ? 1 : t < 0.85 ? 2 : 3;
 }
 
 /**
  * Colour for one sector's mean move.
  *
- * `null` is NOT 0. A sector where no member holds a return today has no average to report, and
- * painting it the colour of "unchanged" would claim a measurement that was never made — the exact
- * failure D-13 names as the most likely way this system lies on screen. It gets the neutral token
- * and a dash, and reads as absent rather than flat.
+ * Two different neutrals, and the difference is the point. A sector whose members all finished
+ * exactly level HAS a measurement and it is zero, so it takes `--data-neutral`. A sector where no
+ * member holds a return today has NO average to report, so it takes a visibly paler wash and a
+ * dash — painting it the colour of 0% would claim a measurement nobody made, which is the most
+ * likely way this system could lie on screen.
  */
 function tileFill(mean: number | null): string {
-  if (mean === null || !Number.isFinite(mean)) return "var(--data-neutral)";
+  if (directional(mean)) return RAMP[mean > 0 ? "pos" : "neg"][tileLevel(mean)];
   if (mean === 0) return "var(--data-neutral)";
-  const intensity = Math.min(1, Math.abs(mean) / FULL_SCALE);
-  // 0.22 floor: the weakest non-zero move must still read as directional, not as neutral.
-  const alpha = 0.22 + 0.78 * intensity;
-  return mean > 0
-    ? `color-mix(in srgb, var(--data-pos-mark) ${Math.round(alpha * 100)}%, transparent)`
-    : `color-mix(in srgb, var(--data-neg-mark) ${Math.round(alpha * 100)}%, transparent)`;
+  return "color-mix(in srgb, var(--data-neutral) 42%, var(--surface-card))";
+}
+
+/** Only the -700 step and darker can carry white text at these sizes. */
+function isDeep(mean: number | null): boolean {
+  return directional(mean) && tileLevel(mean) >= 2;
 }
 
 /** NULL sector is a real group — tickers with no assigned sector — not an error. */
@@ -104,25 +133,17 @@ function useElementSize<T extends HTMLElement>(): [
 /**
  * "Diễn biến ngành" — area by turnover, colour by mean session move.
  *
- * Two things the API publishes are deliberately carried into the tooltip rather than dropped:
- * `n_with_return` (the actual denominator of `mean_ret_1d`, so a two-stock average is not read
- * with the same weight as a twenty-four-stock one) and the turnover the area encodes.
+ * Two figures the API publishes are carried into the tooltip rather than dropped: `n_with_return`
+ * (the actual denominator of `mean_ret_1d`, so a two-stock average is not read with the same
+ * weight as a twenty-four-stock one) and the turnover the area encodes.
  */
 export function SectorTreemap({ state }: { state: ResourceState<MarketSectorsResponse> }) {
   return (
-    <section className={panel.panel} aria-label="Diễn biến ngành">
-      <div className={panel.panelHead}>
-        <h2 className={panel.panelTitle}>Diễn biến ngành</h2>
-        <span className={panel.panelNote}>Diện tích: GT · Màu: ±%</span>
-      </div>
-
-      <div className={panel.panelBody}>
-        {state.kind === "loading" && <LoadingState rows={4} label="Đang tải diễn biến ngành" />}
-        {state.kind === "error" && <ErrorState code={state.code} message={state.message} />}
-
-        {state.kind === "data" && <TreemapBody sectors={state.data.sectors} />}
-      </div>
-    </section>
+    <Panel title="Diễn biến ngành" note="Diện tích: GT · Màu: ±%">
+      {state.kind === "loading" && <LoadingState rows={4} label="Đang tải diễn biến ngành" />}
+      {state.kind === "error" && <ErrorState code={state.code} message={state.message} />}
+      {state.kind === "data" && <TreemapBody sectors={state.data.sectors} />}
+    </Panel>
   );
 }
 
@@ -140,9 +161,7 @@ function TreemapBody({ sectors }: { sectors: SectorRow[] }) {
   );
 
   if (tiles.length === 0) {
-    return (
-      <EmptyState scope="Ghi chú" message="Chưa có giá trị giao dịch nào cho phiên này." />
-    );
+    return <EmptyState scope="Ghi chú" message="Chưa có giá trị giao dịch nào cho phiên này." />;
   }
 
   const bySector = new Map(sectors.map((s) => [sectorLabel(s.sector), s]));
@@ -153,9 +172,9 @@ function TreemapBody({ sectors }: { sectors: SectorRow[] }) {
     s.mean_ret_1d === null ? DASH : formatPercent(s.mean_ret_1d);
 
   return (
-    <div className={styles.treemapWrap} ref={wrapRef}>
+    <div className="as-treemap-wrap" ref={wrapRef}>
       <svg
-        className={styles.treemap}
+        className="as-treemap"
         viewBox={`0 0 ${VW} ${VH}`}
         role="img"
         aria-label="Bản đồ nhiệt giá trị giao dịch theo ngành"
@@ -171,10 +190,10 @@ function TreemapBody({ sectors }: { sectors: SectorRow[] }) {
               width={t.w}
               height={t.h}
               fill={tileFill(s.mean_ret_1d)}
-              className={styles.treemapTile}
+              className="as-treemap__tile"
               tabIndex={0}
               role="img"
-              aria-label={`${t.key} ${pctOf(s)}, giá trị giao dịch ${formatTurnoverTy(
+              aria-label={`${t.key} ${pctOf(s)}, giá trị giao dịch ${formatBillion(
                 s.total_turnover,
               )} tỷ đồng, ${formatInt(s.n_tickers)} mã`}
               onPointerEnter={() => setHovered(t.key)}
@@ -186,37 +205,39 @@ function TreemapBody({ sectors }: { sectors: SectorRow[] }) {
         })}
       </svg>
 
-      {/* Labels are HTML over the SVG, not <text> inside it (P11 S5). Each sits in its own box
-          with `overflow: hidden`, so a label physically cannot paint outside its tile — the
+      {/* Labels are HTML over the SVG, not <text> inside it. Each sits in its own box with
+          `overflow: hidden`, so a label physically CANNOT paint outside the tile it names — the
           defect this replaces was structural, and so is the fix. The layer ignores the pointer so
           the rect underneath still receives hover. */}
-      <div className={styles.treemapLabels} aria-hidden="true">
+      <div className="as-treemap__labels" aria-hidden="true">
         {tiles.map((t) => {
           const s = bySector.get(t.key);
           if (!s) return null;
-          // viewBox units ARE pixels now, so the tier test needs no scale factor.
+          // viewBox units ARE pixels here, so the tier test needs no scale factor.
           const tier = tierFor(t.w, t.h);
           if (!tier) return null;
+          const deep = isDeep(s.mean_ret_1d);
           return (
             <div
               key={t.key}
-              className={styles.tileLabel}
+              className={`as-treemap__label${deep ? " as-treemap__label--deep" : ""}`}
               style={{
                 left: `${(t.x / VW) * 100}%`,
                 top: `${(t.y / VH) * 100}%`,
                 width: `${(t.w / VW) * 100}%`,
                 height: `${(t.h / VH) * 100}%`,
+                padding: tier.pad,
               }}
             >
               {tier.lines > 0 && (
                 <span
-                  className={styles.tileName}
+                  className="as-treemap__name"
                   style={{ fontSize: `${tier.name}px`, WebkitLineClamp: tier.lines }}
                 >
                   {t.key}
                 </span>
               )}
-              <span className={styles.tilePct} style={{ fontSize: `${tier.pct}px` }}>
+              <span className="as-treemap__pct" style={{ fontSize: `${tier.pct}px` }}>
                 {pctOf(s)}
               </span>
             </div>
@@ -231,10 +252,7 @@ function TreemapBody({ sectors }: { sectors: SectorRow[] }) {
           title={hoveredTile.key}
           rows={[
             { label: "% thay đổi", value: pctOf(hoveredRow) },
-            {
-              label: "GT giao dịch",
-              value: `${formatTurnoverTy(hoveredRow.total_turnover)} tỷ đ`,
-            },
+            { label: "GT giao dịch", value: `${formatBillion(hoveredRow.total_turnover)} tỷ đ` },
             { label: "Số mã", value: formatInt(hoveredRow.n_tickers) },
             { label: "Mã có TSSL", value: formatInt(hoveredRow.n_with_return) },
           ]}

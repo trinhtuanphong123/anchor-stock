@@ -1,0 +1,5 @@
+/* Webfonts. The product loads Roboto + Roboto Mono through next/font (Google Fonts) at
+   weights 400 and 500 only — no 600/700 is loaded anywhere, which is why the type scale in
+   typography.css tops out at 500. Here the same two families are pulled from the Google Fonts
+   CDN so a consuming page gets identical faces. */
+@import url("https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&family=Roboto+Mono:wght@400;500&display=swap");

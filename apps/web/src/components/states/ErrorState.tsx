@@ -1,8 +1,15 @@
+import { Notice } from "./Notice";
+
 /**
- * Maps the stable API error envelope to a scoped, honest error state (UI_SPEC
- * Global States: Error). A 503 / no-valid-snapshot code renders the neutral
- * "Chua co du lieu hop le." wording rather than fabricated data. No action
- * vocabulary.
+ * The API's `{code, message}` envelope as a scoped failure, rendered inside the panel that
+ * failed rather than over the whole page.
+ *
+ * A code meaning "there is no valid snapshot" gets neutral wording instead of the transport
+ * message, which would say nothing a reader can act on. Missing configuration lands here too:
+ * a deployed build shows this and never invents figures to fill the space.
+ *
+ * No action vocabulary — nothing here tells the reader to retry, check their connection, or
+ * contact anyone.
  */
 const NO_SNAPSHOT_CODES = new Set([
   "no_data",
@@ -12,14 +19,13 @@ const NO_SNAPSHOT_CODES = new Set([
 ]);
 
 export function ErrorState({ code, message }: { code?: string; message?: string }) {
-  const isNoSnapshot = code !== undefined && NO_SNAPSHOT_CODES.has(code);
-  const text = isNoSnapshot
-    ? "Chưa có dữ liệu hợp lệ."
-    : message || "Đã xảy ra lỗi khi tải dữ liệu.";
+  const text =
+    code !== undefined && NO_SNAPSHOT_CODES.has(code)
+      ? "Chưa có dữ liệu hợp lệ."
+      : message || "Đã xảy ra lỗi khi tải dữ liệu.";
   return (
-    <p className="status-notice status-notice--error">
-      <span className="status-notice__label">Lỗi:</span>
+    <Notice tone="error" label="Lỗi:">
       {text}
-    </p>
+    </Notice>
   );
 }

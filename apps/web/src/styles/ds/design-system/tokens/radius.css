@@ -1,0 +1,12 @@
+/* Radius — restrained. A board is made of rectangles; nothing here is a pill except a badge. */
+:root {
+  --radius-xs: 2px;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-pill: 999px;
+
+  --radius-control: var(--radius-sm);
+  --radius-card: var(--radius-md);
+  --radius-badge: var(--radius-pill);
+}

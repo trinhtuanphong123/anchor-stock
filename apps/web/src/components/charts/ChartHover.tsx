@@ -195,10 +195,10 @@ export function ChartCrosshair({
   return (
     <g className={styles.crosshair} aria-hidden="true">
       {segments.map(([y0, y1]) => (
-        <line key={`${y0}-${y1}`} x1={x} y1={y0} x2={x} y2={y1} className={styles.crosshairLine} />
+        <line key={`${y0}-${y1}`} x1={x} y1={y0} x2={x} y2={y1} className="as-crosshair-line" />
       ))}
       {dots?.map((d, i) => (
-        <circle key={i} cx={x} cy={d.y} r={2.8} fill={d.color} className={styles.crosshairDot} />
+        <circle key={i} cx={x} cy={d.y} r={2.8} fill={d.color} className="as-crosshair-dot" />
       ))}
     </g>
   );
@@ -233,16 +233,16 @@ export function ChartTooltip({
   const flip = left > 0.5;
   return (
     <div
-      className={`${styles.tooltip} ${flip ? styles.tooltipFlip : ""}`}
+      className={`as-tooltip ${styles.tooltip} ${flip ? styles.tooltipFlip : ""}`}
       style={{ left: `${left * 100}%`, top: `${top * 100}%` }}
       role="status"
       aria-live="polite"
     >
-      <p className={styles.tooltipTitle}>{title}</p>
-      <dl className={styles.tooltipRows}>
+      <p className="as-tooltip__title">{title}</p>
+      <dl className="as-tooltip__rows">
         {rows.map((r) => (
-          <div key={r.label} className={styles.tooltipRow}>
-            <dt className={styles.tooltipLabel}>
+          <div key={r.label} className="as-tooltip__row">
+            <dt className="as-tooltip__label">
               {r.color && (
                 <span
                   className={styles.tooltipSwatch}
@@ -252,7 +252,7 @@ export function ChartTooltip({
               )}
               {r.label}
             </dt>
-            <dd className={styles.tooltipValue}>{r.value}</dd>
+            <dd className="as-tooltip__value">{r.value}</dd>
           </div>
         ))}
       </dl>

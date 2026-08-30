@@ -1,0 +1,34 @@
+/* =============================================================================
+   /anchors — the one thing the design system cannot say about this screen: how its blocks stack.
+
+   Document density, like /tickers and unlike the market board. The two disagree on purpose; the
+   panels, tables, donut and bars all take their form from the global `as-*` layer.
+
+   Rule inherited from the token layer: only var(--*), never a literal value.
+   ============================================================================= */
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-section);
+  padding-block: var(--space-6) var(--space-10);
+}
+
+/* The orbit is the subject of its panel and the sentences beside it are its caption, so the
+   split is uneven. Same proportion as the same chart on /tickers — one picture, one size, on both
+   screens that draw it. Both columns are min-width: 0 so the SVG shrinks rather than pushing the
+   text out. Without this the orbit would absorb the whole 1440px well and render a metre tall. */
+.orbit {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+  gap: var(--space-7);
+  align-items: center;
+}
+
+/* Desktop only this pass. This breakpoint exists so the orbit and its caption stack rather than
+   crush each other below the width the ratio was chosen at — not to serve a phone. */
+@media (max-width: 1080px) {
+  .orbit {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

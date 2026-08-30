@@ -1,6 +1,8 @@
+import { Notice } from "./Notice";
+
 /**
- * Non-trading-day notice (UI_SPEC Global States: Non-trading day). The latest
- * valid snapshot is served; no live-market recomputation is implied.
+ * A day the exchange did not trade. The latest valid snapshot is served; no live-market
+ * recomputation is implied, and the absence of movement is the calendar, not the market.
  */
 export function NonTradingDayNotice({
   isTradingDay = true,
@@ -11,9 +13,9 @@ export function NonTradingDayNotice({
 }) {
   if (isTradingDay) return null;
   return (
-    <p className="status-notice">
-      <span className="status-notice__label">Ghi chú:</span>
-      Non-trading day{dayType ? ` (${dayType})` : ""} — latest valid snapshot served.
-    </p>
+    <Notice tone="muted" label="Ghi chú:">
+      Không phải phiên giao dịch{dayType ? ` (${dayType})` : ""} — đang hiển thị ảnh chụp hợp lệ
+      gần nhất.
+    </Notice>
   );
 }

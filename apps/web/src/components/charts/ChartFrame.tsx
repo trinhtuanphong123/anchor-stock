@@ -1,39 +1,37 @@
 import type { ReactNode } from "react";
-import styles from "./charts.module.css";
-import { ChartCaption } from "./ChartCaption";
 
 /**
- * Reusable chart container: a titled surface with an optional subtitle, an
- * optional metadata caption (unit / horizon / as-of, rendered only when
- * supplied), and a stable content area for the chart body. The body simply
- * renders `children`, so callers pass their own loading/empty/error content —
- * this component holds no data and creates no hooks. No metadata is fabricated.
+ * Padded card around a hand-drawn SVG chart: title, an "as of" line, body.
+ *
+ * Form comes entirely from the global `as-chart-frame*` classes — this file contributes no CSS.
+ * It is deliberately NOT the market board's `Panel`: a panel has a head RAIL with controls and a
+ * rule under it, which is the density of a dashboard. `/tickers` is a document and its charts sit
+ * in a quieter box, which is the same disagreement `Panel` and `DocPanel` already encode.
+ *
+ * `asOf` is the session the figures belong to, written as a subtitle rather than a caption
+ * because on this screen the model's window and the price date are not the same day.
  */
 export function ChartFrame({
   title,
-  subtitle,
-  unit,
-  horizon,
   asOf,
-  className,
+  subtitle,
   children,
 }: {
   title: string;
-  subtitle?: string;
-  unit?: string;
-  horizon?: string;
+  /** Already formatted session date. Rendered as "Đến phiên DD/MM/YY". */
   asOf?: string | null;
-  className?: string;
+  /** Wins over `asOf` when the frame has something more specific to say. */
+  subtitle?: ReactNode;
   children: ReactNode;
 }) {
+  const sub = subtitle ?? (asOf ? `Đến phiên ${asOf}` : null);
   return (
-    <section className={[styles.frame, className].filter(Boolean).join(" ")}>
-      <div className={styles.frameHead}>
-        <h3 className={styles.frameTitle}>{title}</h3>
-        {subtitle && <p className={styles.frameSubtitle}>{subtitle}</p>}
-        <ChartCaption unit={unit} horizon={horizon} asOf={asOf} />
+    <figure className="as-chart-frame">
+      <div className="as-chart-frame__head">
+        <span className="as-chart-frame__title">{title}</span>
+        {sub ? <span className="as-chart-frame__sub">{sub}</span> : null}
       </div>
-      <div className={styles.frameBody}>{children}</div>
-    </section>
+      <div>{children}</div>
+    </figure>
   );
 }

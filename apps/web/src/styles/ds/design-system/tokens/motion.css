@@ -1,0 +1,10 @@
+/* Motion. Colour and background only — nothing translates, scales or bounces.
+   A board where rows move is a board a reader cannot keep their place in. */
+:root {
+  --duration-fast: 100ms; /* @kind other */
+  --duration-normal: 200ms; /* @kind other */
+  --duration-slow: 350ms; /* @kind other */
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1); /* @kind other */
+  --ease-out: cubic-bezier(0, 0, 0.2, 1); /* @kind other */
+  --ease-in: cubic-bezier(0.4, 0, 1, 1); /* @kind other */
+}
