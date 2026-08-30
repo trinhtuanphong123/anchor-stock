@@ -174,7 +174,7 @@ Indicators are display-only. They never enter the factor model or anchor selecti
 > `pipelines/common/upsert.py` used to write through psycopg2 `executemany` — one round trip per
 > row, measured at ~7 minutes per ticker and projecting to roughly ten hours for the 85-ticker
 > universe. It now submits through `psycopg2.extras.execute_values` (`page_size=500`, one round
-> trip per 500 rows), the same fix `docs/plans/active/p13-market-home-redesign.md` §Backfill
+> trip per 500 rows), the same fix `docs/plans/completed/p13-market-home-redesign.md` §Backfill
 > flagged as the obvious follow-up and left undone. `--storage local` followed by
 > `python -m pipelines.storage.mirror --run` is still the faster route when the data is already
 > on disk (§3.3a) — this note is no longer about avoiding a ten-hour wait, just about which path

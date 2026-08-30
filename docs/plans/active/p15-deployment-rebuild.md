@@ -186,7 +186,7 @@ dashboard. The two stale services from the predecessor repo (`srv-da29ai9t0dsc73
 §3.4 (Returns) replaced with a withdrawal stub explaining the tables are now views, numbering
 left as a gap rather than renumbered (two other docs cite `§3.5`/`§3.6` by number); §3.5's
 ten-hour `executemany` warning rewritten now that B1 landed; Known gaps §5 lost the two entries
-this closed. `docs/plans/active/p13-market-home-redesign.md` got a short closing note where it
+this closed. `docs/plans/completed/p13-market-home-redesign.md` got a short closing note where it
 had flagged `execute_values` as "the obvious follow-up... not done" — now done.
 
 One decision record, [D-31](../../decisions/D-31-single-provider-and-derived-storage.md),
